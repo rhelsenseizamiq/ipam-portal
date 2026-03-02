@@ -40,7 +40,7 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         before: Optional[dict[str, Any]] = None,
         after: Optional[dict[str, Any]] = None,
         detail: Optional[str] = None,
-    ) -> AuditLog:
+    ) -> Optional[AuditLog]:
         """Creates an immutable audit log entry, stripping any sensitive keys from before/after."""
         doc = {
             "action": action.value,
@@ -59,4 +59,4 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         except Exception as exc:
             # Never let an audit log failure crash the main operation
             logger.error("Failed to write audit log: %s", exc, exc_info=True)
-            raise
+            return None

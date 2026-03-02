@@ -95,7 +95,7 @@ class AuthService:
             value=refresh_token,
             httponly=True,
             secure=True,
-            samesite="lax",
+            samesite="strict",
             max_age=settings.JWT_REFRESH_EXPIRE_HOURS * 3600,
             path="/api/v1/auth",
         )
@@ -184,7 +184,7 @@ class AuthService:
             value=new_refresh,
             httponly=True,
             secure=True,
-            samesite="lax",
+            samesite="strict",
             max_age=settings.JWT_REFRESH_EXPIRE_HOURS * 3600,
             path="/api/v1/auth",
         )

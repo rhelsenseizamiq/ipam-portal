@@ -1,7 +1,8 @@
 import logging
-from typing import Optional
+import re
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Path, Query, Request, status
 
 from app.core.database import get_database
 from app.dependencies.auth import require_role
@@ -17,6 +18,8 @@ from app.services.subnet_service import SubnetService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/subnets", tags=["subnets"])
+
+_OBJECTID_PATTERN = "^[0-9a-f]{24}$"
 
 _VIEWER_PLUS = require_role("Viewer", "Operator", "Administrator")
 _OPERATOR_PLUS = require_role("Operator", "Administrator")
@@ -49,9 +52,10 @@ async def list_subnets(
     if environment:
         filter_["environment"] = environment.value
     if search:
+        escaped = re.escape(search)
         filter_["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"cidr": {"$regex": search, "$options": "i"}},
+            {"name": {"$regex": escaped, "$options": "i"}},
+            {"cidr": {"$regex": escaped, "$options": "i"}},
         ]
 
     service = _build_service()
@@ -85,7 +89,7 @@ async def create_subnet(
 
 @router.get("/{id}", response_model=SubnetDetailResponse)
 async def get_subnet(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_VIEWER_PLUS),
 ) -> SubnetDetailResponse:
@@ -95,7 +99,7 @@ async def get_subnet(
 
 @router.put("/{id}", response_model=SubnetResponse)
 async def update_subnet(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     body: SubnetUpdate,
     current_user: UserInToken = Depends(_OPERATOR_PLUS),
@@ -112,7 +116,7 @@ async def update_subnet(
 
 @router.patch("/{id}", response_model=SubnetResponse)
 async def patch_subnet(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     body: SubnetUpdate,
     current_user: UserInToken = Depends(_OPERATOR_PLUS),
@@ -129,7 +133,7 @@ async def patch_subnet(
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_subnet(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_ADMIN_ONLY),
 ) -> None:

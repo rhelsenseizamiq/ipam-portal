@@ -228,16 +228,13 @@ class IPRecordService:
         if record is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="IP record not found")
 
-        if record.status != IPStatus.FREE:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"IP {record.ip_address} cannot be reserved — current status: {record.status.value}",
-            )
-
         before_snapshot = _record_snapshot(record)
         now = datetime.now(timezone.utc)
-        updated = await self._ips.update(
+
+        # Atomic: only succeeds if status is still Free at update time
+        updated = await self._ips.update_with_filter(
             id,
+            {"status": IPStatus.FREE.value},
             {
                 "status": IPStatus.RESERVED.value,
                 "reserved_by": username,
@@ -245,6 +242,13 @@ class IPRecordService:
                 "updated_by": username,
             },
         )
+        if updated is None:
+            current = await self._ips.find_by_id(id)
+            current_status = current.status.value if current else "unknown"
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"IP {record.ip_address} cannot be reserved — current status: {current_status}",
+            )
 
         await self._audit.log(
             action=AuditAction.RESERVE,
@@ -260,8 +264,8 @@ class IPRecordService:
         return _to_response(updated)
 
     async def export_records(self, filter_: dict) -> tuple[list[IPRecord], dict[str, str]]:
-        """Return all matching records (no pagination) + a cidr map for subnet_id → cidr."""
-        records, _ = await self._ips.find_all(filter_, skip=0, limit=100_000)
+        """Return matching records (capped at 5,000) + a cidr map for subnet_id → cidr."""
+        records, _ = await self._ips.find_all(filter_, skip=0, limit=5_000)
         # Build subnet_id → cidr map from the records' subnet_ids
         subnet_ids = {r.subnet_id for r in records}
         cidr_map: dict[str, str] = {}
@@ -397,15 +401,12 @@ class IPRecordService:
         if record is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="IP record not found")
 
-        if record.status != IPStatus.RESERVED:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"IP {record.ip_address} cannot be released — current status: {record.status.value}",
-            )
-
         before_snapshot = _record_snapshot(record)
-        updated = await self._ips.update(
+
+        # Atomic: only succeeds if status is still Reserved at update time
+        updated = await self._ips.update_with_filter(
             id,
+            {"status": IPStatus.RESERVED.value},
             {
                 "status": IPStatus.FREE.value,
                 "reserved_by": None,
@@ -413,6 +414,13 @@ class IPRecordService:
                 "updated_by": username,
             },
         )
+        if updated is None:
+            current = await self._ips.find_by_id(id)
+            current_status = current.status.value if current else "unknown"
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"IP {record.ip_address} cannot be released — current status: {current_status}",
+            )
 
         await self._audit.log(
             action=AuditAction.RELEASE,

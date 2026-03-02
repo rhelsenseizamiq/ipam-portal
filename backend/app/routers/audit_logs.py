@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -33,7 +34,7 @@ async def list_audit_logs(
     filter_: dict = {}
 
     if username:
-        filter_["username"] = {"$regex": username, "$options": "i"}
+        filter_["username"] = {"$regex": re.escape(username), "$options": "i"}
     if action:
         filter_["action"] = action.value
     if resource_type:

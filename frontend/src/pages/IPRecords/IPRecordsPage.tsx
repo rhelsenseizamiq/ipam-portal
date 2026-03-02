@@ -15,6 +15,7 @@ import {
   Tag,
   Tooltip,
 } from 'antd';
+const { useWatch } = Form;
 import {
   PlusOutlined,
   SearchOutlined,
@@ -50,6 +51,17 @@ const STATUS_OPTIONS: IPStatus[] = ['Free', 'Reserved', 'In Use'];
 const ENV_OPTIONS: Environment[] = ['Production', 'Test', 'Development'];
 const PAGE_SIZE = 20;
 
+function ipToInt(ip: string): number {
+  return ip.split('.').reduce((acc, octet) => ((acc << 8) + parseInt(octet, 10)) >>> 0, 0);
+}
+
+function isIPInCIDR(ip: string, cidr: string): boolean {
+  const [network, prefixStr] = cidr.split('/');
+  const prefix = parseInt(prefixStr, 10);
+  const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+  return (ipToInt(ip) & mask) === (ipToInt(network) & mask);
+}
+
 const ENV_COLOR: Record<Environment, string> = {
   Production: 'red',
   Test: 'orange',
@@ -75,6 +87,8 @@ const IPRecordsPage: React.FC = () => {
   const [importOpen, setImportOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<IPRecordCreate & IPRecordUpdate>();
+  const watchedSubnetId = useWatch('subnet_id', form) as string | undefined;
+  const selectedSubnet = subnets.find((s) => s.id === watchedSubnetId);
 
   const fetchSubnets = useCallback(async (): Promise<void> => {
     try {
@@ -509,15 +523,28 @@ const IPRecordsPage: React.FC = () => {
           <Form.Item
             label="IP Address"
             name="ip_address"
+            dependencies={['subnet_id']}
+            extra={selectedSubnet ? `Must be within ${selectedSubnet.cidr}` : undefined}
             rules={[
               { required: true, message: 'IP address is required' },
               {
                 pattern: /^(\d{1,3}\.){3}\d{1,3}$/,
                 message: 'Enter a valid IPv4 address',
               },
+              {
+                validator(_rule, value: string) {
+                  if (!value || !selectedSubnet) return Promise.resolve();
+                  if (!isIPInCIDR(value, selectedSubnet.cidr)) {
+                    return Promise.reject(
+                      new Error(`IP must be within subnet ${selectedSubnet.cidr}`)
+                    );
+                  }
+                  return Promise.resolve();
+                },
+              },
             ]}
           >
-            <Input placeholder="192.168.1.10" disabled={!!editingRecord} />
+            <Input placeholder="e.g. 10.0.0.1" disabled={!!editingRecord} />
           </Form.Item>
 
           <Row gutter={12}>

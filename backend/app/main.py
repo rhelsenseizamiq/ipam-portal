@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
 from app.core.database import close_mongo_connection, connect_to_mongo, get_database
@@ -17,6 +18,14 @@ from app.core.rate_limiter import limiter
 from app.models.user import Role
 
 logger = logging.getLogger(__name__)
+
+
+async def _set_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 async def _seed_default_admin() -> None:
@@ -77,6 +86,9 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+    # Security headers on all responses (must be added before CORS)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=_set_security_headers)
+
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -100,7 +112,6 @@ def create_app() -> FastAPI:
     async def health_check() -> dict:
         return {
             "status": "ok",
-            "version": "1.0.0",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 

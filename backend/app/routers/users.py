@@ -1,5 +1,7 @@
 import logging
-from fastapi import APIRouter, Depends, Request, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Path, Request, status
 
 from app.core.database import get_database
 from app.dependencies.auth import require_role
@@ -13,6 +15,8 @@ from app.services.user_service import UserService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
+
+_OBJECTID_PATTERN = "^[0-9a-f]{24}$"
 
 _ADMIN_ONLY = require_role("Administrator")
 
@@ -65,7 +69,7 @@ async def create_user(
 
 @router.get("/{id}", response_model=UserResponse)
 async def get_user(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_ADMIN_ONLY),
 ) -> UserResponse:
@@ -75,7 +79,7 @@ async def get_user(
 
 @router.put("/{id}", response_model=UserResponse)
 async def update_user(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     body: UserUpdate,
     current_user: UserInToken = Depends(_ADMIN_ONLY),
@@ -91,7 +95,7 @@ async def update_user(
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_user(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_ADMIN_ONLY),
 ) -> None:
@@ -105,7 +109,7 @@ async def deactivate_user(
 
 @router.post("/{id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)
 async def reset_user_password(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     body: UserResetPassword,
     current_user: UserInToken = Depends(_ADMIN_ONLY),
@@ -121,7 +125,7 @@ async def reset_user_password(
 
 @router.post("/{id}/activate", response_model=UserResponse)
 async def activate_user(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_ADMIN_ONLY),
 ) -> UserResponse:

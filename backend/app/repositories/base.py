@@ -73,6 +73,27 @@ class BaseRepository(Generic[T]):
         )
         return self._doc_to_model(updated_doc) if updated_doc else None
 
+    async def update_with_filter(
+        self, id: str, extra_filter: dict, fields: dict
+    ) -> Optional[T]:
+        """Atomic conditional update — only applies if extra_filter conditions are also met.
+
+        Returns the updated document, or None if the record was not found or
+        the extra_filter conditions were not satisfied (race condition).
+        """
+        try:
+            oid = self._obj_id(id)
+        except ValueError:
+            return None
+        filter_ = {"_id": oid, **extra_filter}
+        update_fields = {**fields, "updated_at": datetime.now(timezone.utc)}
+        updated_doc = await self._col.find_one_and_update(
+            filter_,
+            {"$set": update_fields},
+            return_document=ReturnDocument.AFTER,
+        )
+        return self._doc_to_model(updated_doc) if updated_doc else None
+
     async def delete(self, id: str) -> bool:
         try:
             oid = self._obj_id(id)

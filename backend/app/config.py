@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     def validate_secret_key(cls, v: str) -> str:
         if len(v) < 32:
             raise ValueError("JWT_SECRET_KEY must be at least 32 characters long")
+        if v == "change-this-secret-in-production":
+            raise ValueError(
+                "JWT_SECRET_KEY is set to the insecure default value. "
+                "Generate a strong secret with: openssl rand -hex 32"
+            )
         return v
 
 

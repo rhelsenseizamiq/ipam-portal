@@ -48,6 +48,14 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    user_doc = await db["users"].find_one({"username": username})
+    if not user_doc or not user_doc.get("is_active", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
         role = Role(role_str)
     except ValueError:

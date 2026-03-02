@@ -1,9 +1,10 @@
 import csv
 import io
 import logging
-from typing import Optional
+import re
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Path, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.core.database import get_database
@@ -20,6 +21,19 @@ from app.services.ip_record_service import IPRecordService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ip-records", tags=["ip-records"])
+
+_FORMULA_PREFIX_CHARS = ("=", "+", "-", "@", "\t", "\r")
+_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB
+_MAX_IMPORT_ROWS = 10_000
+_OBJECTID_PATTERN = "^[0-9a-f]{24}$"
+
+
+def _sanitize_csv_cell(value: str) -> str:
+    """Prevent CSV formula injection by prefixing dangerous leading characters."""
+    if value and value[0] in _FORMULA_PREFIX_CHARS:
+        return "'" + value
+    return value
+
 
 _VIEWER_PLUS = require_role("Viewer", "Operator", "Administrator")
 _OPERATOR_PLUS = require_role("Operator", "Administrator")
@@ -63,7 +77,7 @@ async def list_ip_records(
     if environment:
         filter_["environment"] = environment.value
     if owner:
-        filter_["owner"] = {"$regex": owner, "$options": "i"}
+        filter_["owner"] = {"$regex": re.escape(owner), "$options": "i"}
     if search:
         filter_["$text"] = {"$search": search}
 
@@ -151,9 +165,9 @@ async def export_ip_records(
     environment: Optional[Environment] = Query(None),
     owner: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
-    current_user: UserInToken = Depends(_VIEWER_PLUS),
+    current_user: UserInToken = Depends(_OPERATOR_PLUS),
 ) -> StreamingResponse:
-    """Export matching IP records to CSV."""
+    """Export matching IP records to CSV (Operator+ only, max 5,000 records)."""
     filter_: dict = {}
     if subnet_id:
         filter_["subnet_id"] = subnet_id
@@ -164,7 +178,7 @@ async def export_ip_records(
     if environment:
         filter_["environment"] = environment.value
     if owner:
-        filter_["owner"] = {"$regex": owner, "$options": "i"}
+        filter_["owner"] = {"$regex": re.escape(owner), "$options": "i"}
     if search:
         filter_["$text"] = {"$search": search}
 
@@ -177,13 +191,13 @@ async def export_ip_records(
     for r in records:
         writer.writerow({
             "ip_address": r.ip_address,
-            "hostname": r.hostname or "",
+            "hostname": _sanitize_csv_cell(r.hostname or ""),
             "os_type": r.os_type.value,
             "subnet_cidr": cidr_map.get(r.subnet_id, r.subnet_id),
             "status": r.status.value,
             "environment": r.environment.value,
-            "owner": r.owner or "",
-            "description": r.description or "",
+            "owner": _sanitize_csv_cell(r.owner or ""),
+            "description": _sanitize_csv_cell(r.description or ""),
         })
     buf.seek(0)
     return StreamingResponse(
@@ -203,14 +217,21 @@ async def import_ip_records(
     Import IP records from a CSV file.
     Returns {"imported": N, "errors": [{"row": N, "ip": "...", "error": "..."}]}.
     """
+    from fastapi import HTTPException as _HTTPException
+
     if not file.filename or not file.filename.lower().endswith(".csv"):
-        from fastapi import HTTPException as _HTTPException
         raise _HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Only CSV files are accepted",
         )
 
-    content = await file.read()
+    content = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(content) > _MAX_IMPORT_BYTES:
+        raise _HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"CSV file must not exceed {_MAX_IMPORT_BYTES // (1024 * 1024)} MB",
+        )
+
     try:
         text = content.decode("utf-8-sig")  # utf-8-sig strips BOM if present
     except UnicodeDecodeError:
@@ -218,6 +239,12 @@ async def import_ip_records(
 
     reader = csv.DictReader(io.StringIO(text))
     rows = list(reader)
+
+    if len(rows) > _MAX_IMPORT_ROWS:
+        raise _HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"CSV file must not exceed {_MAX_IMPORT_ROWS} data rows",
+        )
 
     if not rows:
         return {"imported": 0, "errors": []}
@@ -244,7 +271,7 @@ async def get_ip_record_by_ip(
 
 @router.get("/{id}", response_model=IPRecordResponse)
 async def get_ip_record(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_VIEWER_PLUS),
 ) -> IPRecordResponse:
@@ -254,7 +281,7 @@ async def get_ip_record(
 
 @router.put("/{id}", response_model=IPRecordResponse)
 async def update_ip_record(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     body: IPRecordUpdate,
     current_user: UserInToken = Depends(_OPERATOR_PLUS),
@@ -271,7 +298,7 @@ async def update_ip_record(
 
 @router.patch("/{id}", response_model=IPRecordResponse)
 async def patch_ip_record(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     body: IPRecordUpdate,
     current_user: UserInToken = Depends(_OPERATOR_PLUS),
@@ -288,7 +315,7 @@ async def patch_ip_record(
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ip_record(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_ADMIN_ONLY),
 ) -> None:
@@ -303,7 +330,7 @@ async def delete_ip_record(
 
 @router.post("/{id}/reserve", response_model=IPRecordResponse)
 async def reserve_ip_record(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_OPERATOR_PLUS),
 ) -> IPRecordResponse:
@@ -318,7 +345,7 @@ async def reserve_ip_record(
 
 @router.post("/{id}/release", response_model=IPRecordResponse)
 async def release_ip_record(
-    id: str,
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_OPERATOR_PLUS),
 ) -> IPRecordResponse:
