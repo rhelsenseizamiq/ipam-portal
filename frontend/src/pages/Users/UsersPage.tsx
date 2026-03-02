@@ -21,6 +21,7 @@ import {
   CheckCircleOutlined,
   StopOutlined,
   ReloadOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -207,6 +208,22 @@ const UsersPage: React.FC = () => {
     [currentPage, fetchUsers]
   );
 
+  const handleDelete = useCallback(
+    async (user: User): Promise<void> => {
+      try {
+        await usersApi.delete(user.id);
+        message.success(`User "${user.username}" permanently deleted`);
+        void fetchUsers(currentPage);
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
+        message.error(
+          axiosErr.response?.data?.detail ?? axiosErr.message ?? 'Delete failed'
+        );
+      }
+    },
+    [currentPage, fetchUsers]
+  );
+
   const columns: ColumnsType<User> = [
     {
       title: 'Username',
@@ -289,6 +306,17 @@ const UsersPage: React.FC = () => {
                 danger={record.is_active}
                 type={record.is_active ? undefined : 'primary'}
               />
+            </Tooltip>
+          </Popconfirm>
+          <Popconfirm
+            title={`Permanently delete "${record.username}"?`}
+            description="This cannot be undone. Audit logs for this user are kept."
+            onConfirm={() => void handleDelete(record)}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+          >
+            <Tooltip title="Delete permanently">
+              <Button size="small" icon={<DeleteOutlined />} danger />
             </Tooltip>
           </Popconfirm>
         </Space>

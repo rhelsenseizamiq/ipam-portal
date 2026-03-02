@@ -94,15 +94,15 @@ async def update_user(
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
-async def deactivate_user(
+async def delete_user(
     id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
     request: Request,
     current_user: UserInToken = Depends(_ADMIN_ONLY),
 ) -> None:
     service = _build_service()
-    await service.deactivate(
+    await service.delete(
         id=id,
-        deactivated_by=current_user.sub,
+        deleted_by=current_user.sub,
         client_ip=_get_client_ip(request),
     )
 

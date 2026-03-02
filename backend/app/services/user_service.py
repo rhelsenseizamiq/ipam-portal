@@ -169,6 +169,57 @@ class UserService:
             detail=f"Password reset for user '{user.username}' by administrator '{reset_by}'",
         )
 
+    async def delete(
+        self,
+        id: str,
+        deleted_by: str,
+        client_ip: str,
+    ) -> None:
+        user = await self._users.find_by_id(id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        if user.username == deleted_by:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot delete your own account",
+            )
+
+        # Guard: deleting an Administrator must not leave zero active admins
+        if user.role == Role.ADMINISTRATOR and user.is_active:
+            active_admins_count = await self._users.count(
+                {"role": Role.ADMINISTRATOR.value, "is_active": True}
+            )
+            if active_admins_count <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete the last active administrator",
+                )
+
+        before_snapshot = {
+            "username": user.username,
+            "full_name": user.full_name,
+            "role": user.role.value,
+            "is_active": user.is_active,
+        }
+        deleted = await self._users.delete(id)
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete user",
+            )
+
+        await self._audit.log(
+            action=AuditAction.DELETE,
+            resource_type=ResourceType.USER,
+            username=deleted_by,
+            user_role="Administrator",
+            client_ip=client_ip,
+            resource_id=id,
+            before=before_snapshot,
+            detail=f"Permanently deleted user '{user.username}'",
+        )
+
     async def deactivate(
         self,
         id: str,
