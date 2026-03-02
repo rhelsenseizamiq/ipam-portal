@@ -123,7 +123,7 @@ const UsersPage: React.FC = () => {
           username: values.username,
           password: values.password,
           full_name: values.full_name,
-          email: values.email,
+          email: values.email || undefined,
           role: values.role,
         };
         await usersApi.create(payload);
@@ -148,7 +148,7 @@ const UsersPage: React.FC = () => {
       if (!selectedUser) return;
       setSubmitting(true);
       try {
-        await usersApi.update(selectedUser.id, values);
+        await usersApi.update(selectedUser.id, { ...values, email: values.email || undefined });
         message.success('User updated');
         setModalMode(null);
         editForm.resetFields();

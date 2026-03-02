@@ -1,8 +1,15 @@
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 
 from app.models.user import Role
+
+
+def _empty_str_to_none(v: object) -> object:
+    """Treat a blank string as absent so EmailStr validation is not triggered."""
+    if isinstance(v, str) and not v.strip():
+        return None
+    return v
 
 
 class UserCreate(BaseModel):
@@ -18,11 +25,15 @@ class UserCreate(BaseModel):
     email: Optional[EmailStr] = None
     role: Role
 
+    _normalise_email = field_validator("email", mode="before")(_empty_str_to_none)
+
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = Field(None, min_length=1, max_length=100)
     email: Optional[EmailStr] = None
     role: Optional[Role] = None
+
+    _normalise_email = field_validator("email", mode="before")(_empty_str_to_none)
 
 
 class UserResetPassword(BaseModel):
