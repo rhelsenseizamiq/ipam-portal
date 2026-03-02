@@ -1,0 +1,33 @@
+from functools import lru_cache
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+
+    MONGODB_URI: str = "mongodb://localhost:27017"
+    MONGODB_DB_NAME: str = "ipam"
+    JWT_SECRET_KEY: str = "change-this-secret-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60
+    JWT_REFRESH_EXPIRE_HOURS: int = 8
+    INITIAL_ADMIN_USERNAME: str = "admin"
+    INITIAL_ADMIN_PASSWORD: str = "changeme123"
+    APP_ENV: str = "production"
+    ALLOWED_ORIGINS: list[str] = ["https://ipam-portal.com"]
+    ENABLE_SWAGGER: bool = False
+    RATE_LIMIT_LOGIN: str = "5/minute"
+    RATE_LIMIT_API: str = "200/minute"
+
+    @field_validator("JWT_SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("JWT_SECRET_KEY must be at least 32 characters long")
+        return v
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()

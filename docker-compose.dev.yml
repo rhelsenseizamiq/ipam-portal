@@ -1,0 +1,34 @@
+version: "3.9"
+
+# Development overrides — run with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+
+  mongodb:
+    ports:
+      - "27017:27017"    # Expose to host for tools like MongoDB Compass
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend/app:/app/app   # Hot reload
+    environment:
+      APP_ENV: development
+      ENABLE_SWAGGER: "true"
+      ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:3000"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "8000:8000"    # Direct API access for development
+
+  frontend:
+    # In dev, run frontend locally with: cd frontend && npm run dev
+    # This service is not used in dev mode
+    profiles:
+      - skip-in-dev
+
+  nginx:
+    profiles:
+      - skip-in-dev    # Use Vite dev server + direct API access in development

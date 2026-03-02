@@ -1,0 +1,42 @@
+# Environment — NEVER commit real credentials
+.env
+*.env.local
+
+# Generated credentials — contains real passwords, NEVER commit
+credentials.txt
+
+# Internal planning / session files
+PLAN.md
+
+# SSL certificates — managed outside repo
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+dist/
+build/
+*.egg-info/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Docker
+*.log
+
+# macOS
+.DS_Store
