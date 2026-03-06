@@ -46,7 +46,7 @@ import type {
 } from '../../types/ipRecord';
 import type { SubnetDetail } from '../../types/subnet';
 
-const OS_OPTIONS: OSType[] = ['AIX', 'Linux', 'Windows'];
+const OS_OPTIONS: OSType[] = ['AIX', 'Linux', 'Windows', 'macOS', 'OpenShift', 'Unknown'];
 const STATUS_OPTIONS: IPStatus[] = ['Free', 'Reserved', 'In Use'];
 const ENV_OPTIONS: Environment[] = ['Production', 'Test', 'Development'];
 const PAGE_SIZE = 20;
@@ -260,7 +260,11 @@ const IPRecordsPage: React.FC = () => {
       dataIndex: 'ip_address',
       key: 'ip_address',
       width: 140,
-      render: (v: string) => <Typography.Text copyable code>{v}</Typography.Text>,
+      render: (v: string, record: IPRecord) => (
+        <Tooltip title={record.description ?? undefined}>
+          <Typography.Text copyable code>{v}</Typography.Text>
+        </Tooltip>
+      ),
     },
     {
       title: 'Hostname',

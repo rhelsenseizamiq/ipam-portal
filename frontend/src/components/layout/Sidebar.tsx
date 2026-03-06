@@ -4,6 +4,7 @@ import {
   DashboardOutlined,
   GlobalOutlined,
   ApartmentOutlined,
+  ScanOutlined,
   TeamOutlined,
   AuditOutlined,
 } from '@ant-design/icons';
@@ -23,6 +24,7 @@ const Sidebar: React.FC<Props> = ({ collapsed }) => {
     const path = location.pathname;
     if (path.startsWith('/ip-records')) return '/ip-records';
     if (path.startsWith('/subnets')) return '/subnets';
+    if (path.startsWith('/network-scan')) return '/network-scan';
     if (path.startsWith('/users')) return '/users';
     if (path.startsWith('/audit-log')) return '/audit-log';
     return '/dashboard';
@@ -46,6 +48,14 @@ const Sidebar: React.FC<Props> = ({ collapsed }) => {
         label: 'Subnets',
       },
     ];
+
+    if (hasRole('Operator')) {
+      items.push({
+        key: '/network-scan',
+        icon: <ScanOutlined />,
+        label: 'Network Scan',
+      });
+    }
 
     if (hasRole('Administrator')) {
       items.push(

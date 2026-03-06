@@ -40,14 +40,14 @@ def _build_service(db=None) -> SubnetService:
     )
 
 
-@router.get("", response_model=PaginatedResponse[SubnetResponse])
+@router.get("", response_model=PaginatedResponse[SubnetDetailResponse])
 async def list_subnets(
     request: Request,
     pagination: PaginationParams = Depends(),
     environment: Optional[Environment] = Query(None),
     search: Optional[str] = Query(None, description="Search by name or CIDR"),
     current_user: UserInToken = Depends(_VIEWER_PLUS),
-) -> PaginatedResponse[SubnetResponse]:
+) -> PaginatedResponse[SubnetDetailResponse]:
     filter_: dict = {}
     if environment:
         filter_["environment"] = environment.value

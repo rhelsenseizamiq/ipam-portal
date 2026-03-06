@@ -12,6 +12,9 @@ import {
   Col,
   message,
   Popconfirm,
+  Popover,
+  List,
+  Spin,
   Typography,
   Progress,
   Tag,
@@ -25,9 +28,11 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { subnetsApi } from '../../api/subnets';
+import { ipRecordsApi } from '../../api/ipRecords';
 import { useAuth } from '../../context/AuthContext';
+import StatusBadge from '../../components/common/StatusBadge';
 import type { SubnetDetail, SubnetCreate, SubnetUpdate } from '../../types/subnet';
-import type { Environment } from '../../types/ipRecord';
+import type { Environment, IPRecord } from '../../types/ipRecord';
 
 const ENV_OPTIONS: Environment[] = ['Production', 'Test', 'Development'];
 
@@ -38,6 +43,44 @@ const ENV_COLOR: Record<Environment, string> = {
 };
 
 const PAGE_SIZE = 20;
+
+const SubnetIPList: React.FC<{ subnetId: string }> = ({ subnetId }) => {
+  const [ips, setIps] = useState<IPRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    ipRecordsApi
+      .list({ subnet_id: subnetId, page_size: 100 })
+      .then((res) => setIps(res.data.items))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [subnetId]);
+
+  if (loading) return <Spin size="small" />;
+  if (!ips.length)
+    return <Typography.Text type="secondary">No IP records assigned</Typography.Text>;
+
+  return (
+    <List<IPRecord>
+      size="small"
+      dataSource={ips}
+      style={{ maxHeight: 300, overflowY: 'auto', minWidth: 260 }}
+      renderItem={(ip) => (
+        <List.Item style={{ padding: '3px 0', gap: 8, display: 'flex', alignItems: 'center' }}>
+          <Typography.Text code style={{ minWidth: 110 }}>
+            {ip.ip_address}
+          </Typography.Text>
+          <StatusBadge status={ip.status} />
+          {ip.hostname && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {ip.hostname}
+            </Typography.Text>
+          )}
+        </List.Item>
+      )}
+    />
+  );
+};
 
 const SubnetsPage: React.FC = () => {
   const { hasRole } = useAuth();
@@ -160,12 +203,32 @@ const SubnetsPage: React.FC = () => {
       dataIndex: 'cidr',
       key: 'cidr',
       width: 160,
-      render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+      render: (v: string, record: SubnetDetail) => (
+        <Popover
+          title={`Assigned IPs — ${v}`}
+          content={<SubnetIPList subnetId={record.id} />}
+          trigger="click"
+          placement="right"
+        >
+          <Typography.Text
+            code
+            style={{ cursor: 'pointer', color: '#1677ff' }}
+          >
+            {v}
+          </Typography.Text>
+        </Popover>
+      ),
     },
     {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
+      render: (v: string, record: SubnetDetail) =>
+        record.description ? (
+          <Tooltip title={record.description}>{v}</Tooltip>
+        ) : (
+          v
+        ),
     },
     {
       title: 'Environment',

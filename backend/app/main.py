@@ -99,7 +99,7 @@ def create_app() -> FastAPI:
     )
 
     # Include routers
-    from app.routers import auth, users, ip_records, subnets, audit_logs
+    from app.routers import auth, users, ip_records, subnets, audit_logs, scan
 
     api_prefix = "/api/v1"
     app.include_router(auth.router, prefix=api_prefix)
@@ -107,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(ip_records.router, prefix=api_prefix)
     app.include_router(subnets.router, prefix=api_prefix)
     app.include_router(audit_logs.router, prefix=api_prefix)
+    app.include_router(scan.router, prefix=api_prefix)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:

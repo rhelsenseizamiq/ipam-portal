@@ -8,6 +8,7 @@ import LoginPage from './pages/Login/LoginPage';
 import DashboardPage from './pages/Dashboard/DashboardPage';
 import IPRecordsPage from './pages/IPRecords/IPRecordsPage';
 import SubnetsPage from './pages/Subnets/SubnetsPage';
+import NetworkScanPage from './pages/NetworkScan/NetworkScanPage';
 import UsersPage from './pages/Users/UsersPage';
 import AuditLogPage from './pages/AuditLog/AuditLogPage';
 
@@ -81,6 +82,17 @@ const App: React.FC = () => (
               <ProtectedRoute requiredRole="Viewer">
                 <AppLayout>
                   <SubnetsPage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/network-scan"
+            element={
+              <ProtectedRoute requiredRole="Operator">
+                <AppLayout>
+                  <NetworkScanPage />
                 </AppLayout>
               </ProtectedRoute>
             }

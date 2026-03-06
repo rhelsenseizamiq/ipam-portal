@@ -40,3 +40,27 @@ class IPRecordRepository(BaseRepository[IPRecord]):
             if status_key in counts:
                 counts[status_key] = row["count"]
         return counts
+
+    async def count_by_status_for_subnets(self, subnet_ids: list[str]) -> dict[str, dict]:
+        """Returns {subnet_id: {"Free": N, "Reserved": N, "In Use": N}} for all given subnet IDs."""
+        if not subnet_ids:
+            return {}
+        pipeline = [
+            {"$match": {"subnet_id": {"$in": subnet_ids}}},
+            {"$group": {
+                "_id": {"subnet_id": "$subnet_id", "status": "$status"},
+                "count": {"$sum": 1},
+            }},
+        ]
+        cursor = self._col.aggregate(pipeline)
+        results = await cursor.to_list(length=None)
+        empty = {IPStatus.FREE.value: 0, IPStatus.RESERVED.value: 0, IPStatus.IN_USE.value: 0}
+        counts: dict[str, dict] = {}
+        for row in results:
+            sid = row["_id"]["subnet_id"]
+            status_key = row["_id"]["status"]
+            if sid not in counts:
+                counts[sid] = dict(empty)
+            if status_key in counts[sid]:
+                counts[sid][status_key] = row["count"]
+        return counts

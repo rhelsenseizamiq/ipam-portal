@@ -1,4 +1,4 @@
-export type OSType = 'AIX' | 'Linux' | 'Windows';
+export type OSType = 'AIX' | 'Linux' | 'Windows' | 'macOS' | 'OpenShift' | 'Unknown';
 export type IPStatus = 'Free' | 'Reserved' | 'In Use';
 export type Environment = 'Production' | 'Test' | 'Development';
 

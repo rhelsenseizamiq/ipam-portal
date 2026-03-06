@@ -1,6 +1,6 @@
 # IPAM Portal
 
-A fully Dockerized, self-contained **IP Address Management** web portal. Centralized visibility and controlled reservation of IP addresses across AIX, Linux, and Windows infrastructure — secured with local authentication, role-based access control, and full audit logging.
+A fully Dockerized, self-contained **IP Address Management** web portal. Centralized visibility and controlled reservation of IP addresses across AIX, Linux, Windows, macOS, and OpenShift infrastructure — with built-in network scanning, secured with local authentication, role-based access control, and full audit logging.
 
 ---
 
@@ -33,7 +33,8 @@ IPAM Portal is an internal web application that provides:
 
 - **Centralized IP visibility** — view all allocated IPs and hostnames across your infrastructure
 - **Controlled reservation** — reserve IPs within defined subnets with duplicate and conflict prevention
-- **OS categorization** — organize records by AIX, Linux, or Windows
+- **OS categorization** — organize records by AIX, Linux, Windows, macOS, and OpenShift
+- **Built-in network scanner** — discover live hosts via TCP port scanning, auto-group by subnet, and import with one click
 - **CSV import / export** — bulk-load IP records from a spreadsheet or export any filtered view to CSV
 - **Full audit trail** — every create, update, delete, reserve, import, and login action is logged with before/after snapshots
 - **Local user management** — administrators create and manage user accounts directly in the portal, no external directory required
@@ -53,7 +54,7 @@ The entire stack runs as Docker containers behind an Nginx reverse proxy — one
 | Subnet management | Define subnets in CIDR notation with environment tagging |
 | IP record management | Full CRUD with IPv4 validation and CIDR membership check |
 | IP reservation | Reserve/release workflow with conflict prevention |
-| OS categorization | AIX, Linux, Windows per record |
+| OS categorization | AIX, Linux, Windows, macOS, OpenShift per record |
 | Environment tagging | Production, Test, Development per record |
 | Advanced filtering | Filter by subnet, status, OS type, environment, owner, full-text search |
 | **CSV export** | Export any filtered view to CSV — filter by OS, status, environment, subnet |
@@ -61,9 +62,25 @@ The entire stack runs as Docker containers behind an Nginx reverse proxy — one
 | **Import template** | Download a pre-filled template showing the exact expected format |
 | Audit logging | Append-only log with 365-day retention, before/after snapshots |
 | Dashboard | Real-time stats: total/free/reserved/in-use + OS breakdown + subnet utilization |
+| Subnet utilization | Live used/free/total counts per subnet computed via MongoDB aggregation |
 | User management | Admin creates, edits, deactivates, and resets passwords for users |
 | HTTPS | TLS termination at Nginx, HTTP auto-redirects to HTTPS |
 | Rate limiting | Login: 5 req/min/IP · API: 200 req/min/IP |
+
+### Network Scanner (v1.3.0)
+
+| Feature | Description |
+|---------|-------------|
+| **Free CIDR input** | Scan any CIDR range — not limited to existing subnets |
+| **Three scan modes** | Quick (fast, /20 max), Standard (balanced, /22 max), Deep (thorough, /24 max) |
+| **TCP-based discovery** | Pure TCP connect scanning — no ping/ICMP needed, works inside Docker |
+| **OS fingerprinting** | Detects Windows, Linux, macOS, OpenShift from open TCP ports |
+| **Reverse DNS** | Automatically resolves hostnames for discovered hosts |
+| **Subnet grouping** | Results auto-grouped by matching existing subnet (longest-prefix match) |
+| **Unmatched hosts** | Hosts outside any known subnet can be assigned an existing subnet or trigger subnet creation |
+| **Create subnet on the fly** | Create a new subnet directly from unmatched scan results |
+| **Inline editing** | Override hostname and OS type per row before importing |
+| **Bulk import** | Select hosts and import as Reserved IP records with optional Environment/Owner |
 
 ---
 
@@ -218,9 +235,9 @@ Host machine (ports 80, 443)
 | Network | Type | Used by |
 |---------|------|---------|
 | `ipam-internal` | `internal: true` | api, mongodb, frontend, nginx |
-| `ipam-external` | bridge | nginx (exposes 80/443 to host) |
+| `ipam-external` | bridge | nginx, **api** (exposes 80/443 to host; api needs external access for network scanning) |
 
-MongoDB and the API are **never reachable from outside** the Docker host — only Nginx is exposed.
+MongoDB is **never reachable from outside** the Docker host. The API is on both networks: `ipam-internal` for MongoDB/frontend communication and `ipam-external` for outbound TCP scanning of infrastructure hosts.
 
 ---
 
@@ -286,7 +303,7 @@ Available to Operator and Administrator roles:
 |--------|----------|----------------|---------|
 | `ip_address` | Yes | Valid IPv4 | `10.10.1.42` |
 | `hostname` | No | Any string | `db01.example.com` |
-| `os_type` | Yes | `AIX` \| `Linux` \| `Windows` | `Linux` |
+| `os_type` | Yes | `AIX` \| `Linux` \| `Windows` \| `macOS` \| `OpenShift` \| `Unknown` | `Linux` |
 | `subnet_cidr` | Yes | Existing subnet CIDR | `10.10.1.0/24` |
 | `status` | No | `Free` \| `Reserved` \| `In Use` (default: `Free`) | `In Use` |
 | `environment` | Yes | `Production` \| `Test` \| `Development` | `Production` |
@@ -299,6 +316,34 @@ Available to Operator and Administrator roles:
 - The IP address must be within the specified subnet's CIDR range
 - Duplicate IP addresses are rejected with an error per row
 - Every successfully imported record creates an audit log entry
+
+### Running a network scan
+
+Available to Operator and Administrator roles:
+
+1. Go to **Network Scan** in the sidebar
+2. Enter a CIDR range (e.g. `192.168.1.0/24`) — this can be any range, not limited to existing subnets
+3. Select a scan mode:
+   - **Quick** — 4 ports, up to /20, ~0.2 s timeout per host. Best for large networks needing fast discovery.
+   - **Standard** — 14 ports, up to /22, ~0.5 s timeout per host. Best for typical office/data-center subnets.
+   - **Deep** — 35 ports, up to /24, ~1.0 s timeout per host. Best for thorough OS fingerprinting including macOS (AFP port 548).
+4. Click **Start Scan** and wait for results
+5. Results are grouped by matching subnet. Hosts in unknown subnets appear in an **Unmatched** group.
+6. For unmatched hosts, use the **Assign Subnet** dropdown to link to an existing subnet, or choose **Create new subnet…** to define one on the fly.
+7. Optionally override **Hostname** or **OS Type** per row by clicking the inline edit icons.
+8. Select the hosts to import using the checkboxes (use the group-level checkbox to select all in a subnet).
+9. Set **Environment** (required) and **Owner** (optional) in the import settings card.
+10. Click **Import Selected** — selected hosts are created as IP records with status **Reserved**.
+
+**OS detection heuristics (scan port → OS):**
+
+| Detected OS | Key ports |
+|-------------|-----------|
+| OpenShift | 6443, or 8443 + 9090 |
+| Windows | 3389 (RDP), or 135 + 445 (SMB), or 1433 (SQL Server) |
+| macOS | 548 (AFP) |
+| Linux | 22 (SSH), 512 / 513 / 514 (rsh) |
+| Unknown | None of the above open |
 
 ### Managing users (Administrator only)
 
@@ -380,6 +425,41 @@ GET    /api/v1/subnets/{id}/ip-records  All IPs in subnet
 GET    /api/v1/subnets/{id}/available-ips Unallocated IPs
 ```
 
+### Network Scan
+
+```
+POST /api/v1/scan                       Run a TCP network scan
+```
+
+**Request body:**
+```json
+{
+  "cidr": "192.168.1.0/24",
+  "mode": "standard"
+}
+```
+
+`mode` values: `quick` | `standard` | `deep`
+
+**Response:**
+```json
+{
+  "cidr": "192.168.1.0/24",
+  "mode": "standard",
+  "total_scanned": 254,
+  "live_hosts": 3,
+  "duration_seconds": 12.4,
+  "hosts": [
+    {
+      "ip": "192.168.1.1",
+      "hostname": "router.local",
+      "os_type": "Linux",
+      "open_ports": [22, 80, 443]
+    }
+  ]
+}
+```
+
 ### Audit Logs (Administrator only)
 
 ```
@@ -423,6 +503,8 @@ GET /api/v1/audit-logs/resource/{type}/{id}     All events for a resource
 | Reserve / release IPs | | ✓ | ✓ |
 | **Import IP records from CSV** | | ✓ | ✓ |
 | **Download import template** | | ✓ | ✓ |
+| **Run network scan** | | ✓ | ✓ |
+| **Import scan results** | | ✓ | ✓ |
 | Delete IP records | | | ✓ |
 | Create / edit subnets | | | ✓ |
 | Delete subnets | | | ✓ |
@@ -657,7 +739,8 @@ ipam-portal/
 │       │   └── auth_service.py
 │       ├── routers/
 │       │   ├── ip_records.py     Includes /export/template, /export, /import endpoints
-│       │   ├── subnets.py
+│       │   ├── subnets.py        List returns SubnetDetailResponse with utilization
+│       │   ├── scan.py           POST /scan — TCP network discovery (Quick/Standard/Deep)
 │       │   ├── auth.py
 │       │   ├── users.py
 │       │   └── audit_logs.py
@@ -674,12 +757,13 @@ ipam-portal/
         │   ├── ipRecords.ts      Includes exportRecords, importRecords, downloadTemplate
         │   ├── auth.ts
         │   ├── subnets.ts
+        │   ├── scan.ts           ScanMode types, SCAN_MODES metadata, scanApi.scan()
         │   └── auditLogs.ts
-        ├── types/                TypeScript interfaces
+        ├── types/                TypeScript interfaces (OSType includes macOS, OpenShift)
         ├── context/              AuthContext (in-memory token + role)
         ├── components/
         │   ├── layout/           AppLayout, Sidebar, Header
-        │   └── common/           ProtectedRoute, StatusBadge, OSIcon
+        │   └── common/           ProtectedRoute, StatusBadge, OSIcon (inline SVG icons)
         └── pages/
             ├── Login/
             ├── Dashboard/
@@ -687,7 +771,10 @@ ipam-portal/
             │   ├── IPRecordsPage.tsx   Main table + filter bar + action buttons
             │   ├── ExportModal.tsx     Filter selection + CSV download
             │   └── ImportModal.tsx     Template download + file upload + result view
-            ├── Subnets/
+            ├── Subnets/              CIDR popover shows IPs; name tooltip shows description
+            ├── NetworkScan/
+            │   ├── NetworkScanPage.tsx  Free CIDR input, mode cards, grouped results, import
+            │   └── CreateSubnetModal.tsx Create subnet from unmatched scan host
             ├── Users/
             └── AuditLog/
 ```
@@ -707,6 +794,29 @@ ipam-portal/
 ---
 
 ## Changelog
+
+### v1.3.0 — Network Scanner & OS Expansion
+
+**New features**
+
+- **Network Scanner tab** — TCP-based host discovery for any CIDR range. Three scan modes (Quick / Standard / Deep) tuned for different network sizes and thoroughness requirements. No ICMP/ping needed — pure TCP connect scanning works inside Docker without root privileges.
+- **OS fingerprinting** — Detected automatically from open ports: Windows (RDP 3389, SMB 135/445, MSSQL 1433), Linux (SSH 22, rsh 512-514), macOS (AFP 548), OpenShift (6443, 8443+9090), Unknown (no recognized ports).
+- **Reverse DNS** — Hostnames resolved automatically for each discovered host via `socket.gethostbyaddr()`.
+- **Subnet grouping** — Scan results grouped by matching existing subnet using longest-prefix match. Hosts not covered by any subnet appear in an "Unmatched" group.
+- **Create subnet from scan** — Unmatched hosts show a "Create new subnet…" option that opens a pre-filled modal, creates the subnet, and immediately groups the host under it.
+- **Inline editing** — Hostname and OS type can be corrected per row before importing.
+- **Bulk import** — Selected hosts imported as Reserved IP records with Environment and Owner settings.
+- **macOS and OpenShift OS types** — Added to both backend enum and frontend across IP Records, Network Scanner, CSV import, and OSIcon.
+- **Subnet utilization fix** — `GET /subnets` list now returns `SubnetDetailResponse` with real `total_ips`, `used_ips`, `free_ips` computed via a single MongoDB aggregation query (was always 0% before).
+- **Subnet CIDR popover** — Click a subnet's CIDR in the Subnets table to see a live list of its IP records.
+- **Subnet name tooltip** — Hover over a subnet name to see its description.
+- **IP address description tooltip** — Hover over an IP address in IP Records to see the record's description.
+
+**Bug fixes**
+
+- **Docker network isolation** — The `api` service was on `ipam-internal: internal: true` only, blocking all outbound network access. Added `api` to `ipam-external` network so the scanner can reach infrastructure hosts.
+
+---
 
 ### v1.2.0 — Bug Fixes
 
@@ -757,6 +867,9 @@ ipam-portal/
 - [x] **CSV export** with per-column filters (OS, status, environment, subnet)
 - [x] **CSV import** with per-row validation and error report
 - [x] Import template download
+- [x] **Network Scanner** — TCP discovery, OS fingerprinting, reverse DNS, subnet grouping, bulk import
+- [x] **macOS and OpenShift** OS types
+- [x] **Subnet utilization** — real used/free counts via MongoDB aggregation
 
 ### Phase 2 (Planned)
 
@@ -830,7 +943,7 @@ make shell-mongo
 | `Subnet 'x.x.x.x/yy' not found` | The CIDR in `subnet_cidr` doesn't match any subnet in the portal | Create the subnet first, or correct the CIDR spelling |
 | `IP x.x.x.x is not within subnet x.x.x.x/yy` | IP address is outside the subnet range | Use the correct subnet for that IP, or correct the IP |
 | `IP address x.x.x.x already exists` | The IP is already allocated | Remove the row or delete the existing record first |
-| `os_type must be one of …` | Typo in the OS column | Use exactly `AIX`, `Linux`, or `Windows` (case-sensitive) |
+| `os_type must be one of …` | Typo in the OS column | Use exactly `AIX`, `Linux`, `Windows`, `macOS`, `OpenShift`, or `Unknown` (case-sensitive) |
 | `environment must be one of …` | Typo in the environment column | Use exactly `Production`, `Test`, or `Development` |
 | `Only CSV files are accepted` | Wrong file type uploaded | Save the spreadsheet as `.csv` before importing |
 

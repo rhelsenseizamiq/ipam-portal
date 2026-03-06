@@ -8,6 +8,9 @@ class OSType(str, Enum):
     AIX = "AIX"
     LINUX = "Linux"
     WINDOWS = "Windows"
+    MACOS = "macOS"
+    OPENSHIFT = "OpenShift"
+    UNKNOWN = "Unknown"
 
 
 class IPStatus(str, Enum):

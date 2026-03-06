@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, status
 
 from app.models.audit_log import AuditAction, ResourceType
+from app.models.ip_record import IPStatus
 from app.models.subnet import Subnet
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.ip_record_repository import IPRecordRepository
@@ -123,9 +124,41 @@ class SubnetService:
         filter_: dict,
         skip: int = 0,
         limit: int = 50,
-    ) -> tuple[list[SubnetResponse], int]:
+    ) -> tuple[list[SubnetDetailResponse], int]:
         subnets, total = await self._subnets.find_all(filter_, skip=skip, limit=limit)
-        return [_to_response(s) for s in subnets], total
+        if not subnets:
+            return [], total
+
+        subnet_ids = [s.id for s in subnets if s.id]
+        all_counts = await self._ips.count_by_status_for_subnets(subnet_ids)
+
+        result: list[SubnetDetailResponse] = []
+        for subnet in subnets:
+            counts = all_counts.get(subnet.id, {})
+            try:
+                network = ipaddress.ip_network(subnet.cidr, strict=False)
+                total_ips = network.num_addresses
+            except ValueError:
+                total_ips = 0
+
+            result.append(SubnetDetailResponse(
+                id=subnet.id,
+                cidr=subnet.cidr,
+                name=subnet.name,
+                description=subnet.description,
+                gateway=subnet.gateway,
+                vlan_id=subnet.vlan_id,
+                environment=subnet.environment,
+                created_at=subnet.created_at,
+                updated_at=subnet.updated_at,
+                created_by=subnet.created_by,
+                updated_by=subnet.updated_by,
+                total_ips=total_ips,
+                used_ips=counts.get(IPStatus.IN_USE.value, 0),
+                free_ips=counts.get(IPStatus.FREE.value, 0),
+                reserved_ips=counts.get(IPStatus.RESERVED.value, 0),
+            ))
+        return result, total
 
     async def update(
         self,
