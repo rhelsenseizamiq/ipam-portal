@@ -1,843 +1,150 @@
 # IPAM Portal
 
-A fully Dockerized, self-contained **IP Address Management** web portal. Centralized visibility and controlled management of IP addresses across AIX, Linux, Windows, macOS, and OpenShift infrastructure — with hierarchical prefix nesting, VRF support, IP ranges, built-in network scanning, recharts dashboards, bulk operations, full change history, and role-based access control backed by a complete audit trail.
+A self-hosted IP Address Management portal with NetBox-style prefix hierarchy, dual-stack IPv4/IPv6, vSphere VM import, DNS conflict detection, and optional LDAP/AD authentication.
 
 ---
 
-## Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Docker Infrastructure](#docker-infrastructure)
-- [Usage Guide](#usage-guide)
-- [API Reference](#api-reference)
-- [Role-Based Access Control](#role-based-access-control)
-- [Security](#security)
-- [Development Mode](#development-mode)
-- [Daily Operations](#daily-operations)
-- [Backup & Restore](#backup--restore)
-- [Project Structure](#project-structure)
-- [Changelog](#changelog)
-- [Roadmap](#roadmap)
-- [Troubleshooting](#troubleshooting)
-
----
-
-## Overview
-
-IPAM Portal is an internal web application that provides:
-
-- **Centralized IP visibility** — view all allocated IPs and hostnames across your infrastructure
-- **Prefix hierarchy** — subnets nest automatically by CIDR containment (NetBox-style container/leaf model)
-- **VRF support** — isolate routing domains, reuse overlapping IP ranges across tenants or sites
-- **Aggregates & RIRs** — track top-level address blocks assigned by ARIN, RIPE NCC, APNIC, LACNIC, AFRINIC, or RFC1918
-- **IP Ranges** — define named address spans (DHCP pools, server blocks) within a subnet
-- **Recharts dashboard** — real-time donut and bar charts for IP status, environment, and OS breakdowns
-- **Bulk operations** — reserve, release, or update fields across multiple IP records at once
-- **Change history** — per-record audit timeline with before/after field diffs
-- **Subnet utilization alerts** — configurable threshold per subnet; dashboard shows a red banner when exceeded
-- **Built-in network scanner** — discover live hosts via TCP port scanning, auto-group by subnet, import with one click
-- **CSV import / export** — bulk-load IP records from a spreadsheet or export any filtered view to CSV
-- **Full audit trail** — every create, update, delete, reserve, import, and login action is logged with before/after snapshots
-- **Local user management** — administrators create and manage user accounts directly in the portal, no external directory required
-
-The entire stack runs as Docker containers behind an Nginx reverse proxy — one command to set up, one command to run.
-
----
-
-## Features
-
-### Core (Phase 1 — MVP)
-
-| Feature | Description |
-|---------|-------------|
-| Local authentication | Username + bcrypt-hashed password stored in MongoDB |
-| Role-based access | Viewer, Operator, Administrator with enforced permissions |
-| Subnet management | Define subnets in CIDR notation with environment tagging |
-| IP record management | Full CRUD with IPv4 validation and CIDR membership check |
-| IP reservation | Reserve/release workflow with conflict prevention |
-| OS categorization | AIX, Linux, Windows, macOS, OpenShift, Unknown per record |
-| Environment tagging | Production, Staging, UAT, QA, Test, Development, DR, Lab per record |
-| Advanced filtering | Filter by subnet, status, OS type, environment, owner, full-text search |
-| **CSV export** | Export any filtered view to CSV — filter by OS, status, environment, subnet |
-| **CSV import** | Bulk import IP records from CSV; per-row validation with error report |
-| **Import template** | Download a pre-filled template showing the exact expected format |
-| Audit logging | Append-only log with 365-day retention, before/after snapshots |
-| Dashboard | Real-time recharts visualizations: status donut, environment bar, OS bar, subnet table, activity timeline |
-| Subnet utilization | Live used/free/total counts per subnet computed via MongoDB aggregation |
-| User management | Admin creates, edits, deactivates, and resets passwords for users |
-| HTTPS | TLS termination at Nginx, HTTP auto-redirects to HTTPS |
-| Rate limiting | Login: 5 req/min/IP · API: 200 req/min/IP |
-
-### Network Scanner (v1.3.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Free CIDR input** | Scan any CIDR range — not limited to existing subnets |
-| **Three scan modes** | Quick (fast, /20 max), Standard (balanced, /22 max), Deep (thorough, /24 max) |
-| **TCP-based discovery** | Pure TCP connect scanning — no ping/ICMP needed, works inside Docker |
-| **OS fingerprinting** | Detects Windows, Linux, macOS, OpenShift from open TCP ports |
-| **Reverse DNS** | Automatically resolves hostnames for discovered hosts |
-| **Subnet grouping** | Results auto-grouped by matching existing subnet (longest-prefix match) |
-| **Unmatched hosts** | Hosts outside any known subnet can be assigned an existing subnet or trigger subnet creation |
-| **Create subnet on the fly** | Create a new subnet directly from unmatched scan results |
-| **Inline editing** | Override hostname and OS type per row before importing |
-| **Bulk import** | Select hosts and import as Reserved IP records with optional Environment/Owner |
-
-### IP Hierarchy & IPAM Model (v2.0.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Prefix hierarchy** | Subnets nest automatically — a smaller CIDR is placed as a child of the largest containing subnet |
-| **Container subnets** | Subnets with child prefixes show delegated address-space utilization |
-| **Leaf subnets** | Subnets holding IP records directly show per-IP utilization |
-| **VRFs** | Virtual Routing and Forwarding domains with optional Route Distinguisher (RD) for overlapping IP spaces |
-| **Aggregates** | Top-level address blocks with RIR attribution (ARIN, RIPE NCC, APNIC, LACNIC, AFRINIC, RFC1918) |
-| **IP Ranges** | Named spans of consecutive addresses within a subnet (DHCP pools, reserved blocks); overlap prevention enforced |
-
-### Dashboard, Bulk Ops & History (v2.1.0)
-
-| Feature | Description |
-|---------|-------------|
-| **Recharts dashboard** | Single `/api/v1/stats` call replaces 8 parallel requests; returns all breakdown data in one response |
-| **Status donut chart** | PieChart showing Free / Reserved / In Use split with percentage legend |
-| **Environment bar chart** | Horizontal BarChart showing IP count per environment, color-coded |
-| **OS type bar chart** | Horizontal BarChart for all 6 OS types, color-coded |
-| **Recent Activity timeline** | Last 5 audit events: action tag, username, relative + absolute timestamp |
-| **Subnet utilization alerts** | Optional threshold (1–100%) per subnet; warning icon on row + red banner on dashboard when exceeded |
-| **Bulk reserve / release** | Select multiple IP records and change status in one action |
-| **Bulk field update** | Change Environment, OS Type, or Owner across all selected records at once |
-| **Change history drawer** | Per-IP-record audit timeline with before → after field diffs for UPDATE events |
-| **Help & Concepts drawer** | Searchable accordion covering all IPAM concepts, roles, and workflows |
-
----
-
-## Tech Stack
+## Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3.11 + FastAPI + Uvicorn |
-| Database driver | Motor 3.7 (async MongoDB) |
-| Password hashing | bcrypt (cost factor 12, direct library — no passlib wrapper) |
-| Auth tokens | python-jose HS256 JWT (access 60 min + HttpOnly refresh 8 h) |
-| Frontend | React 18 + TypeScript + Vite |
-| UI components | Ant Design 5 |
-| Charts | recharts 2.12 |
-| HTTP client | Axios (with silent token refresh interceptor) |
-| Database | MongoDB 7.0 |
-| Reverse proxy | Nginx 1.25 |
-| Deployment | Docker Compose |
-
----
-
-## Prerequisites
-
-| Requirement | Minimum version | Check |
-|-------------|----------------|-------|
-| Docker Engine | 24+ | `docker --version` |
-| Docker Compose v2 | 2.20+ | `docker compose version` |
-| OpenSSL | any | `openssl version` |
-
-> **Note:** You do **not** need Python, Node.js, or npm installed on the host. Everything runs inside containers.
+| Backend | Python 3.11 · FastAPI · Motor (async MongoDB) · Pydantic v2 |
+| Frontend | React 18 · Vite · TypeScript · Ant Design 5 · recharts |
+| Database | MongoDB 7 |
+| Auth | JWT (HS256) · local accounts · optional LDAP/AD via ldap3 |
+| Container | Docker Compose · Nginx reverse proxy |
 
 ---
 
 ## Quick Start
 
-### 1. Clone or copy the project
-
 ```bash
-cd ~/Desktop/ipam-portal
+git clone <repo-url> && cd ipam-portal
+cp backend/.env.example backend/.env   # edit values
+docker compose up --build -d
 ```
 
-### 2. Run the setup wizard
+Portal available at **http://localhost**. Default login is set via `INITIAL_ADMIN_USERNAME` / `INITIAL_ADMIN_PASSWORD` in `.env`.
 
+**Rebuild after code changes:**
 ```bash
-bash setup.sh
-```
-
-The wizard will:
-
-1. Verify Docker is running
-2. Generate strong random secrets (MongoDB passwords, 256-bit JWT key)
-3. Prompt you to set the initial administrator username and password
-4. Generate a self-signed TLS certificate (or let you provide your own)
-5. Build all Docker images (~3–5 minutes on first run)
-6. Start the full stack
-7. Wait for all health checks to pass
-8. Print the access URL and next steps
-
-### 3. Open the portal
-
-```
-https://localhost
-```
-
-> Your browser will show a security warning for the self-signed certificate — click **Advanced → Proceed** (this is normal for self-signed certs; replace with a real certificate for production).
-
-### 4. Log in
-
-Use the administrator credentials you set during setup.
-
-### 5. Post-setup checklist
-
-- [ ] Log in and immediately change your password: **Header → Change Password**
-- [ ] Remove `INITIAL_ADMIN_PASSWORD` from `.env` after your first login
-- [ ] Create at least one **Subnet** before adding IP records
-- [ ] Create additional user accounts for your team: **Users → Create User**
-
----
-
-## Configuration
-
-All configuration lives in `.env` (generated by `setup.sh` from `.env.example`).
-
-```bash
-# ── MongoDB ───────────────────────────────────────────
-MONGO_ROOT_USER=admin
-MONGO_ROOT_PASSWORD=<generated>
-MONGO_APP_USER=ipam_app
-MONGO_APP_PASSWORD=<generated>
-MONGODB_URI=mongodb://ipam_app:<password>@mongodb:27017/ipam?authSource=ipam
-MONGODB_DB_NAME=ipam
-
-# ── JWT ───────────────────────────────────────────────
-JWT_SECRET_KEY=<generated-256-bit-hex>
-JWT_ALGORITHM=HS256
-JWT_EXPIRE_MINUTES=60         # Access token lifetime
-JWT_REFRESH_EXPIRE_HOURS=8    # Refresh token lifetime (one work shift)
-
-# ── Initial Admin (remove after first login!) ─────────
-INITIAL_ADMIN_USERNAME=admin
-INITIAL_ADMIN_PASSWORD=<your-chosen-password>
-
-# ── App ───────────────────────────────────────────────
-APP_ENV=production
-ALLOWED_ORIGINS=["https://ipam-portal.com","https://localhost"]
-ENABLE_SWAGGER=false           # Set to true to expose /api/docs
-
-# ── Rate Limiting ─────────────────────────────────────
-RATE_LIMIT_LOGIN=5/minute
-RATE_LIMIT_API=200/minute
-```
-
-> **Note:** `ALLOWED_ORIGINS` must be a JSON array string (e.g. `["https://ipam-portal.com","https://localhost"]`).
-
-### Using a real TLS certificate
-
-Replace the self-signed certificate with your organization's certificate:
-
-```bash
-cp /path/to/your/cert.pem nginx/ssl/cert.pem
-cp /path/to/your/private.key nginx/ssl/key.pem
-chmod 600 nginx/ssl/key.pem
-make restart
+docker compose build frontend api && docker compose up -d frontend api
 ```
 
 ---
 
-## Docker Infrastructure
+## Configuration (`backend/.env`)
 
-```
-Host machine (ports 80, 443)
-│
-└── nginx  ←── TLS termination, rate limiting, reverse proxy
-     │
-     ├── /api/*  ──────────── api (FastAPI, port 8000, internal only)
-     │                             │
-     │                             └── mongodb (port 27017, internal only)
-     │
-     └── /*  ──────────────── frontend (nginx:alpine, port 80, internal only)
-```
-
-### Services
-
-| Service | Image | Exposed | Purpose |
-|---------|-------|---------|---------|
-| `nginx` | `nginx:1.25-alpine` | 80, 443 | TLS termination + reverse proxy |
-| `api` | Custom (Python 3.11) | Internal only | FastAPI backend |
-| `frontend` | Custom (nginx:alpine) | Internal only | React SPA static files |
-| `mongodb` | `mongo:7.0` | Internal only | Database |
-
-### Networks
-
-| Network | Type | Used by |
-|---------|------|---------|
-| `ipam-internal` | `internal: true` | api, mongodb, frontend, nginx |
-| `ipam-external` | bridge | nginx, **api** (exposes 80/443 to host; api needs external access for network scanning) |
-
-MongoDB is **never reachable from outside** the Docker host. The API is on both networks: `ipam-internal` for MongoDB/frontend communication and `ipam-external` for outbound TCP scanning of infrastructure hosts.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MONGODB_URI` | `mongodb://…` | MongoDB connection string |
+| `MONGODB_DB_NAME` | `ipam` | Database name |
+| `JWT_SECRET_KEY` | — | JWT signing secret (required, ≥32 chars) |
+| `JWT_EXPIRE_MINUTES` | `60` | Token lifetime |
+| `INITIAL_ADMIN_USERNAME` | `admin` | Bootstrap admin (remove after first login) |
+| `INITIAL_ADMIN_PASSWORD` | — | Bootstrap admin password |
+| `LDAP_ENABLED` | `false` | Enable LDAP/AD login |
+| `LDAP_SERVER` | — | LDAP server hostname |
+| `LDAP_PORT` | `389` | LDAP port |
+| `LDAP_USE_TLS` | `true` | Use STARTTLS |
+| `LDAP_BIND_DN` | — | Service account DN for user search |
+| `LDAP_BIND_PASSWORD` | — | Service account password |
+| `LDAP_BASE_DN` | — | Search base (e.g. `DC=corp,DC=example,DC=com`) |
+| `LDAP_USER_FILTER` | `(sAMAccountName={username})` | User search filter |
+| `LDAP_DEFAULT_ROLE` | `Viewer` | Role for auto-provisioned LDAP users |
 
 ---
 
-## Usage Guide
+## Features
 
-### Adding your first subnet
+### Core
+- Subnet management (CIDR, gateway, VLAN, environment, VRF, alert threshold)
+- IP record tracking: hostname, OS type, owner, status (Free / Reserved / In Use)
+- Automatic prefix nesting — smaller CIDRs become children of larger ones
+- VRFs — isolated routing domains with optional Route Distinguisher
+- Aggregates & RIRs — top-level address blocks (ARIN, RIPE NCC, APNIC, LACNIC, AFRINIC, RFC1918)
+- IP Ranges — named spans (e.g. DHCP pools) within a subnet
+- CSV import / export with validation and template download
 
-1. Go to **Subnets** in the sidebar
-2. Click **Create Subnet**
-3. Enter the CIDR (e.g. `10.10.1.0/24`), name, environment, and optionally gateway, VLAN, VRF, and alert threshold
-4. Click **Save**
+### Dashboard & Operations (v2.1)
+- recharts dashboard: IP status donut, environment bar, OS bar, top subnets, recent activity
+- Subnet utilization alert threshold — warning badge on row + dashboard banner when exceeded
+- Bulk reserve / release / update-fields for multiple IP records
+- Per-record change history with before→after field diffs
 
-Subnets are automatically nested by CIDR containment. A `/16` containing a `/24` will show the `/24` as a child node in the tree.
+### Network Scanner (v1.3)
+- TCP-based host discovery for any CIDR; no ICMP/root needed
+- OS fingerprinting (Linux, Windows, macOS, OpenShift, AIX) + reverse DNS
+- Select discovered hosts → bulk-import as IP records
 
-### Setting a utilization alert on a subnet
+### IPv6, LDAP, Integrations & DNS Conflicts (v3.0)
+- **IPv6 dual-stack** — subnets and IP records support both IPv4 and IPv6; ip_version badge in table
+- **LDAP/AD authentication** — optional; first-login auto-provisions user as Viewer; local auth unchanged
+- **DNS conflict detection** — per-subnet scan: FORWARD_MISMATCH, PTR_MISMATCH, NO_FORWARD, DUPLICATE_HOSTNAME
+- **vSphere VM import** — connect to vCenter, select VMs, map to subnets, bulk-import as IP records
+- **Smart subnet creation** — when adding an IP that doesn't fit any subnet, a "Create subnet for this IP" prompt auto-suggests the CIDR and creates + selects the subnet inline
 
-1. Open the **Create Subnet** or **Edit Subnet** form
-2. Fill in **Alert Threshold %** (e.g. `80`)
-3. When the subnet's utilization reaches or exceeds that percentage, a warning icon appears on its row and a red banner appears on the Dashboard
+---
 
-### Adding IP records
+## User Roles
 
-1. Go to **IP Records**
-2. Click **Add IP**
-3. Fill in: IP address (must be within an existing subnet's CIDR), hostname (optional), OS type, environment, owner (optional), description (optional)
-4. The system validates the IP is within the selected subnet and not already allocated
-5. Click **Save**
-
-### Reserving / releasing IPs
-
-An IP with status **Free** can be reserved by an Operator or Administrator:
-
-1. Find the IP in the IP Records table
-2. Click the **Reserve** button (lock icon)
-3. The status changes to **Reserved**
-
-A **Reserved** IP can be released back to **Free** using the **Release** button (unlock icon).
-
-### Bulk operations
-
-Select multiple rows using the checkboxes in the IP Records table:
-
-1. Tick one or more rows — a bulk-action bar appears above the table
-2. **Reserve** — marks all selected IPs as Reserved
-3. **Release** — sets all selected IPs back to Free
-4. **Update Fields** — opens a modal to change Environment, OS Type, or Owner across all selected records (only filled-in fields are applied)
-5. **Clear** — deselects all rows
-
-Each modified record gets its own audit log entry.
-
-### Viewing change history for an IP
-
-1. Find the IP in the IP Records table
-2. Click the **History** button (clock icon) — visible to all roles
-3. The history drawer shows the last 50 changes sorted newest-first
-4. For UPDATE events, a diff shows exactly which fields changed and their old → new values
-
-### Exporting IP records to CSV
-
-Available to all roles (Viewer, Operator, Administrator):
-
-1. Go to **IP Records**
-2. Click **Export**
-3. In the Export modal, optionally select filters: OS Type, Status, Environment, or Subnet
-4. Click **Download CSV** — the file `ipam_export.csv` downloads immediately
-5. Leave all filters blank to export every record
-
-**CSV columns exported:** `ip_address`, `hostname`, `os_type`, `subnet_cidr`, `status`, `environment`, `owner`, `description`
-
-### Importing IP records from CSV
-
-Available to Operator and Administrator roles:
-
-1. Go to **IP Records**
-2. Click **Import**
-3. **Step 1** — Click **ipam_import_template.csv** to download the template
-4. Fill in the template (see format below) and save it as a `.csv` file
-5. **Step 2** — Drag the file into the upload area (or click to browse)
-6. Click **Import**
-7. The result shows how many records were imported and a table of any rows that failed with their error reasons
-
-**CSV import format:**
-
-| Column | Required | Allowed values | Example |
-|--------|----------|----------------|---------|
-| `ip_address` | Yes | Valid IPv4 | `10.10.1.42` |
-| `hostname` | No | Any string | `db01.example.com` |
-| `os_type` | Yes | `AIX` \| `Linux` \| `Windows` \| `macOS` \| `OpenShift` \| `Unknown` | `Linux` |
-| `subnet_cidr` | Yes | Existing subnet CIDR | `10.10.1.0/24` |
-| `status` | No | `Free` \| `Reserved` \| `In Use` (default: `Free`) | `In Use` |
-| `environment` | Yes | `Production` \| `Staging` \| `UAT` \| `QA` \| `Test` \| `Development` \| `DR` \| `Lab` | `Production` |
-| `owner` | No | Any string | `team-infra` |
-| `description` | No | Any string | `Web server` |
-
-**Import rules:**
-- Each row is validated independently — failed rows are reported but do not stop the rest of the import
-- `subnet_cidr` must match an existing subnet in the database
-- The IP address must be within the specified subnet's CIDR range
-- Duplicate IP addresses are rejected with an error per row
-- Every successfully imported record creates an audit log entry
-
-### Managing VRFs
-
-1. Go to **VRFs** in the sidebar
-2. Click **Create VRF** and provide a name and optional Route Distinguisher (e.g. `65000:100`)
-3. Assign subnets or IP records to a VRF when creating/editing them
-
-VRFs allow the same IP ranges to coexist in different routing domains without conflict.
-
-### Managing Aggregates
-
-1. Go to **Aggregates** in the sidebar
-2. Click **Create Aggregate** and provide the CIDR block and the RIR (ARIN, RIPE NCC, APNIC, LACNIC, AFRINIC, or RFC1918)
-3. Aggregates are informational — they represent the top-level address space assigned to your organization
-
-### Managing IP Ranges
-
-IP Ranges are managed from the **Subnet Detail** panel:
-
-1. Go to **Subnets** and click any CIDR to open the detail drawer
-2. Click **Add Range** and fill in Name, Start Address, End Address, and Status
-3. Ranges must not overlap each other within the same subnet
-
-### Running a network scan
-
-Available to Operator and Administrator roles:
-
-1. Go to **Network Scan** in the sidebar
-2. Enter a CIDR range (e.g. `192.168.1.0/24`) — this can be any range, not limited to existing subnets
-3. Select a scan mode:
-   - **Quick** — 4 ports, up to /20, ~0.2 s timeout per host. Best for large networks needing fast discovery.
-   - **Standard** — 14 ports, up to /22, ~0.5 s timeout per host. Best for typical office/data-center subnets.
-   - **Deep** — 35 ports, up to /24, ~1.0 s timeout per host. Best for thorough OS fingerprinting including macOS (AFP port 548).
-4. Click **Start Scan** and wait for results
-5. Results are grouped by matching subnet. Hosts in unknown subnets appear in an **Unmatched** group.
-6. For unmatched hosts, use the **Assign Subnet** dropdown to link to an existing subnet, or choose **Create new subnet…** to define one on the fly.
-7. Optionally override **Hostname** or **OS Type** per row by clicking the inline edit icons.
-8. Select the hosts to import using the checkboxes (use the group-level checkbox to select all in a subnet).
-9. Set **Environment** (required) and **Owner** (optional) in the import settings card.
-10. Click **Import Selected** — selected hosts are created as IP records with status **Reserved**.
-
-**OS detection heuristics (scan port → OS):**
-
-| Detected OS | Key ports |
-|-------------|-----------|
-| OpenShift | 6443, or 8443 + 9090 |
-| Windows | 3389 (RDP), or 135 + 445 (SMB), or 1433 (SQL Server) |
-| macOS | 548 (AFP) |
-| Linux | 22 (SSH), 512 / 513 / 514 (rsh) |
-| Unknown | None of the above open |
-
-### Managing users (Administrator only)
-
-1. Go to **Users** in the sidebar
-2. Click **Create User** — set username, password, full name, and role
-3. To change a user's role: click **Edit**
-4. To disable a user without deleting their audit history: click **Deactivate**
-5. To reset a forgotten password: click **Reset Password**
+| Role | Permissions |
+|------|-------------|
+| **Viewer** | Read-only: all pages, change history |
+| **Operator** | Viewer + create/edit/reserve/release, bulk ops, network scan, DNS conflict scan, vSphere import, subnet quick-create |
+| **Administrator** | Operator + delete, user management, full audit log |
 
 ---
 
 ## API Reference
 
-The REST API is available at `/api/v1/`. In development mode (`ENABLE_SWAGGER=true`), interactive docs are at `/api/docs`.
+All endpoints prefixed `/api/v1`. Auth via `Authorization: Bearer <token>`.
 
-### Authentication
-
-```
-POST /api/v1/auth/login           Login → returns access token + sets refresh cookie
-POST /api/v1/auth/logout          Logout → invalidates token
-GET  /api/v1/auth/me              Current user info
-POST /api/v1/auth/refresh         Silent token renewal (uses HttpOnly cookie)
-POST /api/v1/auth/change-password Change own password
-```
-
-### Dashboard Stats (Viewer+)
-
-```
-GET  /api/v1/stats                Single call returning all dashboard data
-```
-
-**Response:**
-```json
-{
-  "total_ips": 1240,
-  "status_breakdown": { "Free": 850, "Reserved": 120, "In Use": 270 },
-  "os_breakdown": { "Linux": 400, "Windows": 200, "AIX": 80, "macOS": 30, "OpenShift": 15, "Unknown": 515 },
-  "environment_breakdown": { "Production": 600, "Development": 300, "Staging": 200, "Lab": 140 },
-  "total_subnets": 24,
-  "total_vrfs": 3,
-  "total_aggregates": 2,
-  "critical_subnets": [
-    { "id": "...", "cidr": "10.10.1.0/24", "name": "Prod LAN", "utilization_pct": 87, "alert_threshold": 80 }
-  ],
-  "recent_activity": [
-    { "timestamp": "2026-03-07T10:00:00Z", "username": "admin", "action": "RESERVE", "resource_type": "ip_record", "summary": "10.10.1.42" }
-  ]
-}
-```
-
-### Users (Administrator only)
-
-```
-GET    /api/v1/users                    List all users
-POST   /api/v1/users                    Create user
-GET    /api/v1/users/{id}               Get user
-PUT    /api/v1/users/{id}               Update user
-DELETE /api/v1/users/{id}               Deactivate user
-POST   /api/v1/users/{id}/reset-password Reset password
-POST   /api/v1/users/{id}/activate      Re-activate user
-```
-
-### IP Records
-
-```
-GET    /api/v1/ip-records                      List (filterable, paginated)
-POST   /api/v1/ip-records                      Create single record
-GET    /api/v1/ip-records/export/template      Download CSV import template
-GET    /api/v1/ip-records/export               Export filtered records to CSV
-POST   /api/v1/ip-records/import               Bulk import from CSV file
-GET    /api/v1/ip-records/by-ip/{ip}           Lookup by exact IP address
-GET    /api/v1/ip-records/{id}                 Get by ID
-GET    /api/v1/ip-records/{id}/history         Audit history for one record (Viewer+)
-PUT    /api/v1/ip-records/{id}                 Update
-PATCH  /api/v1/ip-records/{id}                 Partial update
-DELETE /api/v1/ip-records/{id}                 Delete (Admin only)
-POST   /api/v1/ip-records/{id}/reserve         Reserve
-POST   /api/v1/ip-records/{id}/release         Release
-POST   /api/v1/ip-records/bulk/reserve         Bulk reserve (Operator+)
-POST   /api/v1/ip-records/bulk/release         Bulk release (Operator+)
-POST   /api/v1/ip-records/bulk/update          Bulk field update (Operator+)
-```
-
-**Filter params for `GET /ip-records` and `GET /ip-records/export`:**
-`subnet_id`, `status`, `os_type`, `environment`, `owner`, `search`, `page`, `page_size`
-
-**Bulk reserve / release body:**
-```json
-{ "ids": ["<id1>", "<id2>", "..."] }
-```
-
-**Bulk update body:**
-```json
-{
-  "ids": ["<id1>", "<id2>"],
-  "environment": "Production",
-  "os_type": "Linux",
-  "owner": "team-infra"
-}
-```
-Only non-null fields in the body are applied; omit fields you don't want changed.
+### Auth
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/auth/login` | — | Login (local or LDAP) |
+| POST | `/auth/logout` | Viewer+ | Invalidate token |
+| GET | `/auth/config` | — | `{ldap_enabled: bool}` |
+| GET | `/auth/me` | Viewer+ | Current user |
+| POST | `/auth/change-password` | Viewer+ | Change password (local only) |
 
 ### Subnets
-
-```
-GET    /api/v1/subnets                   List (flat, with utilization)
-GET    /api/v1/subnets/tree              Hierarchical tree (nested by CIDR containment)
-POST   /api/v1/subnets                   Create (Operator+)
-GET    /api/v1/subnets/{id}              Detail + utilization stats
-PUT    /api/v1/subnets/{id}              Update (Operator+)
-DELETE /api/v1/subnets/{id}             Delete (Admin only, no IPs allocated)
-GET    /api/v1/subnets/{id}/ip-records  All IPs in subnet
-GET    /api/v1/subnets/{id}/available-ips Unallocated IPs
-```
-
-### VRFs
-
-```
-GET    /api/v1/vrfs                List
-POST   /api/v1/vrfs                Create (Operator+)
-GET    /api/v1/vrfs/{id}           Get
-PUT    /api/v1/vrfs/{id}           Update (Operator+)
-DELETE /api/v1/vrfs/{id}           Delete (Admin only)
-```
-
-### Aggregates
-
-```
-GET    /api/v1/aggregates          List
-POST   /api/v1/aggregates          Create (Operator+)
-GET    /api/v1/aggregates/{id}     Get
-PUT    /api/v1/aggregates/{id}     Update (Operator+)
-DELETE /api/v1/aggregates/{id}     Delete (Admin only)
-```
-
-### IP Ranges
-
-```
-GET    /api/v1/ip-ranges                    List (filterable by subnet_id)
-POST   /api/v1/ip-ranges                    Create (Operator+)
-GET    /api/v1/ip-ranges/{id}               Get
-PUT    /api/v1/ip-ranges/{id}               Update (Operator+)
-DELETE /api/v1/ip-ranges/{id}               Delete (Admin only)
-```
-
-### Network Scan
-
-```
-POST /api/v1/scan                       Run a TCP network scan
-```
-
-**Request body:**
-```json
-{
-  "cidr": "192.168.1.0/24",
-  "mode": "standard"
-}
-```
-
-`mode` values: `quick` | `standard` | `deep`
-
-**Response:**
-```json
-{
-  "cidr": "192.168.1.0/24",
-  "mode": "standard",
-  "total_scanned": 254,
-  "live_hosts": 3,
-  "duration_seconds": 12.4,
-  "hosts": [
-    {
-      "ip": "192.168.1.1",
-      "hostname": "router.local",
-      "os_type": "Linux",
-      "open_ports": [22, 80, 443]
-    }
-  ]
-}
-```
-
-### Audit Logs (Administrator only)
-
-```
-GET /api/v1/audit-logs                          List (filterable)
-GET /api/v1/audit-logs/{id}                     Single entry
-GET /api/v1/audit-logs/resource/{type}/{id}     All events for a resource
-```
-
-**Filter params:** `username`, `action`, `resource_type`, `resource_id`, `date_from`, `date_to`, `page`, `page_size`
-
-### All API responses use a consistent envelope
-
-```json
-// Single item
-{ "id": "...", "field": "value", ... }
-
-// Paginated list
-{
-  "items": [...],
-  "total": 150,
-  "page": 1,
-  "page_size": 50,
-  "pages": 3
-}
-
-// Error
-{ "detail": "Human-readable error message" }
-```
-
----
-
-## Role-Based Access Control
-
-| Action | Viewer | Operator | Administrator |
-|--------|:------:|:--------:|:-------------:|
-| View dashboard + charts | ✓ | ✓ | ✓ |
-| View IP records | ✓ | ✓ | ✓ |
-| View subnets, VRFs, aggregates, IP ranges | ✓ | ✓ | ✓ |
-| **Export IP records to CSV** | ✓ | ✓ | ✓ |
-| **View change history** | ✓ | ✓ | ✓ |
-| Create / edit IP records | | ✓ | ✓ |
-| Reserve / release IPs | | ✓ | ✓ |
-| **Bulk reserve / release / update** | | ✓ | ✓ |
-| **Import IP records from CSV** | | ✓ | ✓ |
-| **Download import template** | | ✓ | ✓ |
-| **Run network scan** | | ✓ | ✓ |
-| **Import scan results** | | ✓ | ✓ |
-| Create / edit subnets, VRFs, aggregates, IP ranges | | ✓ | ✓ |
-| Delete IP records | | | ✓ |
-| Delete subnets / VRFs / aggregates / IP ranges | | | ✓ |
-| Manage users | | | ✓ |
-| View full audit log | | | ✓ |
-
-Role is assigned when the user account is created and can be changed by an Administrator at any time. Changes take effect at the user's next login.
-
-**Guards:**
-- An Administrator cannot deactivate their own account
-- The last active Administrator account cannot be deactivated
-- At least one active admin must always exist
-
----
-
-## Security
-
-### Authentication & sessions
-
-| Concern | Implementation |
-|---------|---------------|
-| Password storage | bcrypt with cost factor 12, explicit 72-byte truncation — no plaintext ever stored |
-| Access token | HS256 JWT, 60-minute lifetime, stored in **React memory only** (never localStorage) |
-| Refresh token | HttpOnly + Secure + **SameSite=Strict** cookie — inaccessible to JavaScript |
-| Token validation | Every request verifies the token, checks the JTI blocklist, **and confirms the user still exists and is active** |
-| Logout | Token JTI added to MongoDB blocklist with auto-expiring TTL index |
-| Login brute force | Rate-limited to 5 requests/minute per IP at Nginx level |
-| Error messages | Generic "Invalid credentials" for both wrong username and wrong password (no enumeration) |
-| password_hash | Never returned in any API response or audit log snapshot |
-| Silent refresh loop | Axios interceptor skips `/auth/refresh` 401s to prevent recursive refresh calls |
-
-### Network & TLS
-
-| Concern | Implementation |
-|---------|---------------|
-| Encryption | TLS 1.2 minimum, TLS 1.3 preferred |
-| HSTS | `max-age=63072000; includeSubDomains` enforced |
-| HTTP redirect | All HTTP traffic auto-redirected to HTTPS |
-| IP allowlist | Nginx `geo` block — only RFC-1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) are permitted; all other IPs receive 403 |
-| Database exposure | MongoDB port never published to host; internal Docker network only |
-| API exposure | FastAPI never directly reachable from outside the container network |
-| Security headers | Set at both **Nginx** and **FastAPI middleware** layers: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy`, `Referrer-Policy` |
-| CSP | `script-src 'self'` (no `unsafe-inline`); `style-src 'self' 'unsafe-inline'` (required for Ant Design CSS-in-JS) |
-
-### Input & data safety
-
-| Concern | Implementation |
-|---------|---------------|
-| CSV formula injection | All user-controlled cells in CSV exports are sanitised — values starting with `=`, `+`, `-`, `@` are prefixed with `'` |
-| MongoDB regex injection / ReDoS | All user-supplied filter strings are passed through `re.escape()` before embedding in `$regex` queries |
-| ObjectId validation | All `/{id}` path parameters are validated against `^[0-9a-f]{24}$` at the schema level — invalid IDs never reach the database |
-| CSV import limits | Max 10 MB file size, max 10,000 rows per import |
-| Export access | Export endpoint restricted to Operator+ role; hard cap of 5,000 records per export |
-| JWT secret guard | Startup fails immediately if `JWT_SECRET_KEY` is the known default value |
-| Atomic IP reservation | Reserve/release operations use `find_one_and_update` with a conditional filter — no race conditions under concurrent requests |
-| Audit log fault tolerance | Audit log write failures are caught, logged as errors, and never propagate to the user-facing operation |
-
-### Audit integrity
-
-- The `audit_logs` collection is **append-only** — no update or delete operations are permitted at the repository layer
-- Every state-changing action records a full before/after snapshot
-- CSV imports create an individual audit log entry per successfully imported record
-- Bulk operations write one audit log entry per modified record
-- Failed login attempts are logged with username and client IP
-- Audit logs are automatically purged after 365 days via MongoDB TTL index
-
-### Secrets management
-
-- All secrets are stored in `.env` with `600` permissions and excluded from git via `.gitignore`
-- Secrets are never hardcoded in source files or `docker-compose.yml`
-- JWT key is a minimum 256-bit random hex string generated by `setup.sh`
-- Application refuses to start if `JWT_SECRET_KEY` is set to the known placeholder value
-- `INITIAL_ADMIN_PASSWORD` should be removed from `.env` after the first login
-
----
-
-## Development Mode
-
-For local development you can run the API and frontend separately with hot reload:
-
-### Backend (hot reload)
-
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Start MongoDB only
-docker compose up -d mongodb
-
-# Run API with hot reload
-uvicorn app.main:app --reload --port 8000
-```
-
-### Frontend (Vite dev server)
-
-```bash
-cd frontend
-npm install
-npm run dev
-# Opens http://localhost:5173
-# API requests proxied to http://localhost:8000
-```
-
-### Dev stack via Docker Compose override
-
-```bash
-# Runs MongoDB + API with hot reload + exposes ports for debugging
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-
-# Access:
-#   API:          http://localhost:8000
-#   API docs:     http://localhost:8000/api/docs  (ENABLE_SWAGGER=true)
-#   MongoDB:      localhost:27017
-```
-
----
-
-## Daily Operations
-
-All commands are available via `make`. Run `make help` to see them all.
-
-```bash
-make setup        # First-time setup wizard
-make up           # Start all services
-make down         # Stop all services
-make restart      # Restart all services
-make logs         # Tail logs from all containers
-make logs-api     # Tail API logs only
-make logs-nginx   # Tail Nginx access/error logs
-make rebuild      # Rebuild images after code changes + restart
-make shell-api    # Open a shell inside the API container
-make shell-mongo  # Open mongosh (MongoDB shell)
-make test         # Run backend test suite
-make backup       # Dump MongoDB to ./backups/
-make clean        # Remove all containers, volumes, and images (destructive!)
-```
-
-### Checking service health
-
-```bash
-docker compose ps                   # Show status of all containers
-curl -k https://localhost/health    # API health check endpoint
-```
-
-### Restarting a single service
-
-```bash
-docker compose restart api
-docker compose restart nginx
-```
-
-### Viewing logs for a specific service
-
-```bash
-docker compose logs -f api --tail=100
-docker compose logs -f mongodb --tail=50
-```
-
----
-
-## Backup & Restore
-
-### Create a backup
-
-```bash
-make backup
-# Saves to ./backups/ipam_backup_YYYYMMDD_HHMMSS.tar.gz
-```
-
-### Restore a backup
-
-```bash
-# Extract the archive
-tar xzf backups/ipam_backup_20260301_120000.tar.gz -C /tmp/
-
-# Restore into running MongoDB container
-docker compose exec -T mongodb mongorestore \
-  --uri="mongodb://ipam_app:$(grep MONGO_APP_PASSWORD .env | cut -d= -f2)@localhost:27017/ipam?authSource=ipam" \
-  --drop \
-  /tmp/backup_20260301_120000/ipam/
-```
-
-### Automated daily backups (cron)
-
-```bash
-# Add to crontab: crontab -e
-0 2 * * * cd /path/to/ipam-portal && make backup >> /var/log/ipam-backup.log 2>&1
-```
+| Method | Path | Auth |
+|--------|------|------|
+| GET/POST | `/subnets` | Viewer / Operator+ |
+| GET | `/subnets/tree` | Viewer+ |
+| GET/PUT/DELETE | `/subnets/{id}` | Viewer / Operator+ / Admin |
+| GET | `/subnets/{id}/detail` | Viewer+ |
+| POST | `/subnets/{id}/scan-conflicts` | Operator+ |
+
+### IP Records
+| Method | Path | Auth |
+|--------|------|------|
+| GET/POST | `/ip-records` | Viewer / Operator+ |
+| GET/PUT/DELETE | `/ip-records/{id}` | Viewer / Operator+ / Admin |
+| POST | `/ip-records/{id}/reserve` | Operator+ |
+| POST | `/ip-records/{id}/release` | Operator+ |
+| GET | `/ip-records/{id}/history` | Viewer+ |
+| POST | `/ip-records/bulk/reserve` | Operator+ |
+| POST | `/ip-records/bulk/release` | Operator+ |
+| POST | `/ip-records/bulk/update` | Operator+ |
+| GET | `/ip-records/export` | Viewer+ |
+| POST | `/ip-records/import` | Operator+ |
+| GET | `/ip-records/by-ip/{ip_address}` | Viewer+ |
+
+### Other Resources
+| Resource | Base path | Notes |
+|----------|-----------|-------|
+| VRFs | `/vrfs` | Full CRUD |
+| Aggregates | `/aggregates` | Full CRUD |
+| RIRs | `/rirs` | GET (Viewer+), POST (Admin) |
+| IP Ranges | `/ip-ranges` | Full CRUD |
+| Network Scanner | `/scanner/scan` | POST, Operator+ |
+| vSphere Discover | `/integrations/vsphere/discover` | POST, Operator+ |
+| vSphere Import | `/integrations/vsphere/import` | POST, Operator+ |
+| Dashboard Stats | `/stats` | GET, Viewer+ |
+| Users | `/users` | Admin only |
 
 ---
 
@@ -845,352 +152,58 @@ docker compose exec -T mongodb mongorestore \
 
 ```
 ipam-portal/
-├── setup.sh                      Automated setup wizard
-├── Makefile                      Day-to-day operations
-├── docker-compose.yml            Production stack
-├── docker-compose.dev.yml        Development overrides
-├── .env.example                  Environment variable template
-│
-├── nginx/
-│   ├── nginx.conf                Global Nginx settings + security headers
-│   ├── conf.d/ipam.conf          Virtual host: TLS, rate limits, proxy rules
-│   └── ssl/                      TLS certificate and private key (gitignored)
-│
-├── mongodb/
-│   └── init.js                   Creates app user + all collection indexes on first start
-│
-├── backend/                      Python FastAPI application
-│   ├── Dockerfile
-│   ├── requirements.txt
+├── backend/
 │   └── app/
-│       ├── main.py               App factory, lifespan hooks, admin seeding, router registration
-│       ├── config.py             Settings (pydantic-settings, from .env)
-│       ├── core/
-│       │   ├── database.py       Motor client + collection helpers
-│       │   ├── security.py       JWT create/decode + token blocklist
-│       │   ├── password.py       bcrypt hash + verify (direct bcrypt library)
-│       │   ├── rate_limiter.py   SlowAPI setup
-│       │   └── logging_config.py Structured logging (redacts secrets)
-│       ├── dependencies/
-│       │   ├── auth.py           get_current_user + require_role() factory
-│       │   └── pagination.py     Shared page/page_size params
-│       ├── models/               Internal domain models + enums
-│       ├── schemas/              API request/response Pydantic schemas
-│       │   └── ip_record.py      Includes BulkActionRequest, BulkUpdateRequest
-│       ├── repositories/         Data access layer (Repository pattern)
-│       │   └── ip_record_repository.py  Includes aggregate_by_field(), bulk_update_status(), bulk_update_fields()
-│       ├── services/
-│       │   ├── ip_record_service.py  CRUD + reserve/release + export/import + bulk logic
-│       │   ├── subnet_service.py     Tree builder with utilization + alert_threshold
-│       │   └── auth_service.py
-│       ├── routers/
-│       │   ├── stats.py          GET /stats — single dashboard stats endpoint
-│       │   ├── ip_records.py     Includes /history, /bulk/reserve|release|update endpoints
-│       │   ├── subnets.py        Tree endpoint + alert_threshold support
-│       │   ├── vrfs.py           VRF CRUD
-│       │   ├── aggregates.py     Aggregate + RIR CRUD
-│       │   ├── ip_ranges.py      IP Range CRUD with overlap prevention
-│       │   ├── scan.py           POST /scan — TCP network discovery (Quick/Standard/Deep)
-│       │   ├── auth.py
-│       │   ├── users.py
-│       │   └── audit_logs.py
-│       └── tests/                pytest test suite
-│
-└── frontend/                     React TypeScript application
-    ├── Dockerfile                Multi-stage: node build → nginx serve
-    ├── nginx.conf                SPA serving config (inside container)
-    ├── package.json              Includes recharts ^2.12.0
-    ├── vite.config.ts
-    └── src/
-        ├── api/
-        │   ├── client.ts         Axios instance + silent refresh interceptor
-        │   ├── ipRecords.ts      Includes getHistory(), bulkReserve(), bulkRelease(), bulkUpdate()
-        │   ├── stats.ts          statsApi.get() → GET /stats
-        │   ├── auth.ts
-        │   ├── subnets.ts
-        │   ├── vrfs.ts
-        │   ├── aggregates.ts
-        │   ├── ipRanges.ts
-        │   ├── scan.ts           ScanMode types, SCAN_MODES metadata, scanApi.scan()
-        │   └── auditLogs.ts
-        ├── types/
-        │   ├── ipRecord.ts       OSType, Environment, IPRecord interfaces
-        │   ├── subnet.ts         SubnetTreeNode with alert_threshold, utilization_pct
-        │   ├── stats.ts          DashboardStats, SubnetCritical, ActivityItem
-        │   └── ...
-        ├── constants/
-        │   └── environments.ts   ENV_OPTIONS, ENV_COLOR shared across pages
-        ├── context/              AuthContext (in-memory token + role)
-        ├── components/
-        │   ├── layout/
-        │   │   ├── AppLayout.tsx
-        │   │   └── HelpDrawer.tsx   Searchable accordion — IPAM concepts + role guide
-        │   └── common/           ProtectedRoute, StatusBadge, OSIcon (inline SVG icons)
-        └── pages/
-            ├── Login/
-            ├── Dashboard/
-            │   └── DashboardPage.tsx   recharts PieChart + BarCharts + Timeline + alert banner
-            ├── IPRecords/
-            │   ├── IPRecordsPage.tsx   Row selection + bulk bar + History button
-            │   ├── IPRecordHistoryDrawer.tsx  Per-record audit timeline with field diffs
-            │   ├── ExportModal.tsx
-            │   └── ImportModal.tsx
-            ├── Subnets/
-            │   ├── SubnetsPage.tsx         Tree table + alert_threshold form + warning icons
-            │   └── SubnetDetailDrawer.tsx   Utilization bar + IP Ranges CRUD
-            ├── VRFs/
-            ├── Aggregates/
-            ├── NetworkScan/
-            │   ├── NetworkScanPage.tsx
-            │   └── CreateSubnetModal.tsx
-            ├── Users/
-            └── AuditLog/
+│       ├── config.py            Settings (Pydantic BaseSettings)
+│       ├── main.py              FastAPI app + router registration
+│       ├── models/              MongoDB document models
+│       ├── schemas/             Pydantic request/response schemas
+│       ├── repositories/        BaseRepository[T] + domain repos
+│       ├── services/            Business logic
+│       └── routers/             FastAPI routers
+├── frontend/
+│   └── src/
+│       ├── api/                 Axios API clients
+│       ├── components/          Shared UI (Sidebar, HelpDrawer, …)
+│       ├── pages/               Feature pages
+│       ├── types/               TypeScript types
+│       └── constants/           Environments, OS colors, etc.
+├── nginx/nginx.conf
+└── docker-compose.yml
 ```
-
----
-
-## MongoDB Collections
-
-| Collection | Purpose | TTL |
-|------------|---------|-----|
-| `users` | User accounts (bcrypt passwords) | — |
-| `subnets` | Subnet definitions with optional `alert_threshold` | — |
-| `ip_records` | IP address records | — |
-| `vrfs` | Virtual Routing and Forwarding domains | — |
-| `aggregates` | Top-level address blocks with RIR attribution | — |
-| `ip_ranges` | Named address spans within subnets | — |
-| `audit_logs` | Immutable action history (includes import + bulk events) | 365 days |
-| `token_blocklist` | Invalidated JWT IDs | Auto-expires with token |
 
 ---
 
 ## Changelog
 
-### v2.1.0 — Dashboard Charts, Bulk Operations & Change History
+### v3.0.0
+- IPv6 dual-stack: subnets and IP records support IPv4 and IPv6; ip_version badge in table
+- Optional LDAP/AD authentication with auto-provisioning on first login
+- DNS conflict detection per subnet (FORWARD_MISMATCH, PTR_MISMATCH, NO_FORWARD, DUPLICATE_HOSTNAME)
+- vSphere VM import via pyVmomi: 3-step wizard (connect → select VMs → results)
+- Smart subnet creation: when adding an IP not covered by any subnet, inline "Create subnet for this IP" modal pre-fills CIDR and auto-selects after creation
+- Fix: cross-version `subnet_of()` TypeError on `/aggregates` (IPv4 vs IPv6 comparison)
+- Fix: integrations subnet loader hit page_size cap; now paginates correctly
 
-**Dashboard redesign**
+### v2.1.0
+- recharts dashboard (IP status donut, environment/OS bar charts)
+- Subnet utilization alert thresholds with dashboard banner
+- Bulk reserve / release / update-fields for IP records
+- Per-record change history drawer with before→after diffs
 
-- **Recharts visualizations** — replaced the plain stat-card dashboard with interactive recharts charts: a donut PieChart for IP status (Free / Reserved / In Use) with percentage legend, and two horizontal BarCharts for IPs by Environment and IPs by OS Type — all color-coded.
-- **Single stats endpoint** — new `GET /api/v1/stats` replaces 8 parallel API calls on page load. Uses MongoDB `$group` aggregation pipelines for breakdown data, returns top subnets and recent activity in the same response.
-- **Recent Activity timeline** — last 5 audit events shown in an antd Timeline with action color tags, username, relative time (hover for exact timestamp), and a summary line.
-- **Threshold alert banner** — if any subnet has an `alert_threshold` configured and its utilization meets or exceeds it, a red error Alert banner appears at the top of the Dashboard listing the affected subnets.
+### v2.0.0
+- NetBox-style prefix nesting with auto-parent detection and reparenting
+- IP Ranges (DHCP pools, reserved blocks)
+- Aggregates & RIRs
+- VRF-scoped subnet trees
 
-**Subnet utilization alerts**
+### v1.3.0
+- On-demand network scanner (TCP + reverse DNS)
+- macOS and OpenShift OS type detection
+- Subnet utilization fix
 
-- New optional `alert_threshold` field (1–100%) on subnets. Set it in the Create/Edit Subnet form.
-- A warning icon appears on the subnet row in the Subnets table when the threshold is exceeded.
-- Alerting subnets are highlighted in both the dashboard banner and the Top Subnets table.
+### v1.2.0
+- CSV import / export
 
-**Bulk IP operations**
-
-- Row selection checkboxes added to the IP Records table.
-- Bulk action bar appears above the table when rows are selected: **Reserve**, **Release**, **Update Fields**, **Clear**.
-- **Bulk Update Fields** modal lets operators change Environment, OS Type, or Owner across all selected records at once — only filled-in fields are applied.
-- New backend endpoints: `POST /api/v1/ip-records/bulk/reserve`, `/bulk/release`, `/bulk/update` (Operator+).
-- One audit log entry is written per modified record.
-
-**Change history per IP record**
-
-- **History button** (clock icon) on every IP record row — visible to all roles (Viewer+).
-- Opens a drawer fetching `GET /api/v1/ip-records/{id}/history` — last 50 audit events for that record, newest first.
-- UPDATE events show a field-by-field diff (old value → new value) for every changed field.
-- Action tags are color-coded: CREATE (green), UPDATE (blue), DELETE (red), RESERVE (orange), RELEASE (cyan).
-
-**Help & Concepts drawer**
-
-- Completely redesigned — searchable accordion covering all 11 IPAM concepts: Dashboard, IP Records, Bulk Operations, Change History, Subnets, Network Scanner, VRFs, Aggregates & RIRs, IP Ranges, Environments, User Roles & Permissions.
-- Role badges, action icons, Alert tips, and rich examples throughout.
-
-**Bug fixes**
-
-- Subnet tree expand icons no longer appear on leaf nodes (nodes with no children).
-- Utilization percentage mismatch between Subnets table and detail drawer fixed (`toFixed(1)` instead of `Math.round`).
-- Pie chart segment labels removed (were overlapping); percentages now shown only in the legend.
-- Top Subnets card no longer clips rows behind a fixed height constraint.
-
----
-
-### v2.0.0 — NetBox-style IP Hierarchy
-
-**New features**
-
-- **Prefix hierarchy** — subnets nest automatically by CIDR containment. A `/16` automatically becomes the parent of any `/24` within it. The Subnets page renders a tree table showing the full containment hierarchy.
-- **Container vs leaf subnets** — container subnets (with child prefixes) show delegated address-space utilization; leaf subnets show direct IP record utilization.
-- **VRFs (Virtual Routing and Forwarding)** — new VRF entity with optional Route Distinguisher. Subnets and IP records can be assigned to a VRF, enabling overlapping IP space across routing domains.
-- **Aggregates & RIRs** — track top-level address blocks with RIR attribution (ARIN, RIPE NCC, APNIC, LACNIC, AFRINIC, RFC1918).
-- **IP Ranges** — define named spans of consecutive addresses within a subnet (e.g. DHCP pools). Managed from the Subnet Detail drawer. Overlap prevention enforced in the backend.
-- **Subnet Detail drawer** — click any CIDR in the Subnets table to open a detail panel showing descriptions, utilization bar, gateway, VLAN, environment, and the subnet's IP Ranges with full CRUD.
-
----
-
-### v1.3.0 — Network Scanner & OS Expansion
-
-**New features**
-
-- **Network Scanner tab** — TCP-based host discovery for any CIDR range. Three scan modes (Quick / Standard / Deep) tuned for different network sizes and thoroughness requirements. No ICMP/ping needed — pure TCP connect scanning works inside Docker without root privileges.
-- **OS fingerprinting** — Detected automatically from open ports: Windows (RDP 3389, SMB 135/445, MSSQL 1433), Linux (SSH 22, rsh 512-514), macOS (AFP 548), OpenShift (6443, 8443+9090), Unknown (no recognized ports).
-- **Reverse DNS** — Hostnames resolved automatically for each discovered host via `socket.gethostbyaddr()`.
-- **Subnet grouping** — Scan results grouped by matching existing subnet using longest-prefix match. Hosts not covered by any subnet appear in an "Unmatched" group.
-- **Create subnet from scan** — Unmatched hosts show a "Create new subnet…" option that opens a pre-filled modal, creates the subnet, and immediately groups the host under it.
-- **Inline editing** — Hostname and OS type can be corrected per row before importing.
-- **Bulk import** — Selected hosts imported as Reserved IP records with Environment and Owner settings.
-- **macOS and OpenShift OS types** — Added to both backend enum and frontend across IP Records, Network Scanner, CSV import, and OSIcon.
-- **Subnet utilization fix** — `GET /subnets` list now returns `SubnetDetailResponse` with real `total_ips`, `used_ips`, `free_ips` computed via a single MongoDB aggregation query (was always 0% before).
-- **Subnet CIDR popover** — Click a subnet's CIDR in the Subnets table to see a live list of its IP records.
-- **Subnet name tooltip** — Hover over a subnet name to see its description.
-- **IP address description tooltip** — Hover over an IP address in IP Records to see the record's description.
-
-**Bug fixes**
-
-- **Docker network isolation** — The `api` service was on `ipam-internal: internal: true` only, blocking all outbound network access. Added `api` to `ipam-external` network so the scanner can reach infrastructure hosts.
-
----
-
-### v1.2.0 — Bug Fixes
-
-- **Fix: create user 422 on blank email** — Leaving the Email field empty sent `""` which Pydantic's `EmailStr` rejected. A `field_validator` now converts blank strings to `None` on both `UserCreate` and `UserUpdate`; the frontend also strips empty email from the payload before sending.
-- **Fix: deactivate user 404** — The frontend called `POST /users/{id}/deactivate` but only `DELETE /users/{id}` existed. Added the missing `POST /{id}/deactivate` endpoint to match the existing `POST /{id}/activate` pattern.
-- **Feat: permanent user delete** — Administrators can now hard-delete a user account via a new red trash-icon button in the Users table. Safety guards prevent deleting your own account or the last active Administrator. A full audit log entry with before-snapshot is written on every deletion.
-
----
-
-### v1.1.0 — Security Hardening Release
-
-**Security fixes (backend)**
-
-- **JWT secret guard** — application now refuses to start if `JWT_SECRET_KEY` is the known default placeholder value
-- **IP allowlist** — Nginx `geo` block restricts access to RFC-1918 ranges only; all other source IPs receive 403
-- **User active check** — every authenticated request now verifies the user still exists and is active in the database (deactivated users with valid tokens are immediately rejected)
-- **Atomic reserve/release** — replaced read-check-write with `find_one_and_update` to prevent race conditions under concurrent requests
-- **SameSite=Strict** — refresh token cookie changed from Lax to Strict
-- **MongoDB regex sanitisation** — all user-supplied filter strings now go through `re.escape()` before use in `$regex` queries, preventing ReDoS and pattern-enumeration attacks
-- **CSV formula injection prevention** — cells starting with `=`, `+`, `-`, `@`, tab, or CR are prefixed with `'` in all CSV exports
-- **Import limits** — CSV import now rejects files over 10 MB and imports with more than 10,000 rows
-- **Export scope** — export endpoint restricted to Operator+ role; hard cap of 5,000 records per request
-- **ObjectId path validation** — all `/{id}` path parameters validated at schema level (`^[0-9a-f]{24}$`); invalid IDs never reach the database
-- **Security headers middleware** — `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy` are now also set by the FastAPI layer (not only Nginx), so direct API access is also protected
-- **CSP hardened** — `script-src 'unsafe-inline'` removed; health endpoint no longer exposes version information
-- **Audit fault tolerance** — audit log write failures no longer propagate to the user-facing operation
-
-**UX improvements (frontend)**
-
-- **CIDR-aware IP validator** — the Add IP form validates the entered IP address against the selected subnet's CIDR range client-side, showing an inline error before submission
-- **Subnet hint** — the IP Address field displays a helper text (`Must be within 10.x.x.x/24`) once a subnet is selected
-- **Subnet dependency** — changing the subnet selection automatically re-validates the IP address field
-
----
-
-## Roadmap
-
-### Completed
-
-- [x] Local username/password authentication with bcrypt
-- [x] Role-based access control (Viewer / Operator / Administrator)
-- [x] Subnet management with CIDR validation
-- [x] IP record CRUD with duplicate prevention and conflict detection
-- [x] IP reservation / release workflow
-- [x] Full audit logging with before/after snapshots
-- [x] Dashboard with utilization stats
-- [x] User management (admin creates/deactivates/resets users)
-- [x] **CSV export** with per-column filters (OS, status, environment, subnet)
-- [x] **CSV import** with per-row validation and error report
-- [x] Import template download
-- [x] **Network Scanner** — TCP discovery, OS fingerprinting, reverse DNS, subnet grouping, bulk import
-- [x] **macOS and OpenShift** OS types
-- [x] **Prefix hierarchy** — automatic CIDR nesting, container/leaf subnet model
-- [x] **VRFs** — virtual routing domains with Route Distinguisher support
-- [x] **Aggregates & RIRs** — top-level address block tracking
-- [x] **IP Ranges** — named address spans with overlap prevention
-- [x] **Recharts dashboard** — donut + bar charts for status, environment, OS; single stats endpoint
-- [x] **Subnet utilization alerts** — configurable threshold with dashboard banner
-- [x] **Bulk operations** — reserve / release / update fields across multiple IPs
-- [x] **Change history drawer** — per-IP audit timeline with before/after field diffs
-- [x] **Help & Concepts drawer** — searchable accordion covering all IPAM concepts
-
-### Phase 3 (Planned)
-
-- [ ] IP reservation approval workflow (Operator requests → Administrator approves)
-- [ ] Email notifications on reserve/release events
-- [ ] LDAP/Active Directory as optional login method (alongside local auth)
-- [ ] Automated import from vSphere / DNS / CMDB
-- [ ] REST API for automation pipelines (Ansible, Terraform)
-- [ ] DHCP/DNS conflict detection
-- [ ] Excel (.xlsx) export in addition to CSV
-- [ ] Multi-tenant support (separate IPAM spaces per team)
-
----
-
-## Troubleshooting
-
-### Setup fails at image build
-
-```bash
-# Check Docker has enough disk space
-docker system df
-
-# Clean up unused images and retry
-docker system prune -f
-bash setup.sh
-```
-
-### "Connection refused" after startup
-
-```bash
-# Check all containers are healthy
-docker compose ps
-
-# View logs for the failing service
-docker compose logs api --tail=50
-docker compose logs mongodb --tail=50
-```
-
-### Cannot log in after setup
-
-```bash
-# Verify the admin user was seeded
-make shell-mongo
-> db.users.find({}, {username:1, role:1, is_active:1})
-```
-
-### Reset admin password manually
-
-```bash
-# Generate a new bcrypt hash (Python)
-docker compose exec api python3 -c \
-  "from app.core.password import hash_password; print(hash_password('NewPassword123'))"
-
-# Update the admin user in MongoDB
-make shell-mongo
-> db.users.updateOne(
-    { username: "admin" },
-    { $set: { password_hash: "<hash-from-above>" } }
-  )
-```
-
-### Changes not visible after rebuild
-
-Browser may be serving cached JS. After `docker compose build && docker compose up -d`:
-
-1. Open an **incognito / private** window
-2. Or press `Ctrl+Shift+R` (Windows/Linux) / `Cmd+Shift+R` (macOS) to force-reload
-
-### CSV import rows are failing
-
-| Error message | Cause | Fix |
-|---|---|---|
-| `Subnet 'x.x.x.x/yy' not found` | The CIDR in `subnet_cidr` doesn't match any subnet in the portal | Create the subnet first, or correct the CIDR spelling |
-| `IP x.x.x.x is not within subnet x.x.x.x/yy` | IP address is outside the subnet range | Use the correct subnet for that IP, or correct the IP |
-| `IP address x.x.x.x already exists` | The IP is already allocated | Remove the row or delete the existing record first |
-| `os_type must be one of …` | Typo in the OS column | Use exactly `AIX`, `Linux`, `Windows`, `macOS`, `OpenShift`, or `Unknown` (case-sensitive) |
-| `environment must be one of …` | Typo in the environment column | Use exactly `Production`, `Staging`, `UAT`, `QA`, `Test`, `Development`, `DR`, or `Lab` |
-| `Only CSV files are accepted` | Wrong file type uploaded | Save the spreadsheet as `.csv` before importing |
-
-### MongoDB data is lost after `docker compose down`
-
-```bash
-# Use 'down' without -v to preserve volumes
-docker compose down        # keeps data
-docker compose down -v     # deletes data
-```
-
----
+### v1.0.0
+- Initial release: subnets, IP records, VRFs, environments, user management, audit log

@@ -28,6 +28,7 @@ import {
   DownloadOutlined,
   UploadOutlined,
   HistoryOutlined,
+  ApartmentOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { TableRowSelection } from 'antd/es/table/interface';
@@ -49,7 +50,7 @@ import type {
   Environment,
   IPRecordFilters,
 } from '../../types/ipRecord';
-import type { SubnetDetail } from '../../types/subnet';
+import type { SubnetDetail, SubnetCreate } from '../../types/subnet';
 import { ENV_OPTIONS, ENV_COLOR } from '../../constants/environments';
 
 const OS_OPTIONS: OSType[] = ['AIX', 'Linux', 'Windows', 'macOS', 'OpenShift', 'Unknown'];
@@ -73,6 +74,17 @@ function isIPInCIDR(ip: string, cidr: string): boolean {
   }
   const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
   return (ipv4ToInt(ip) & mask) === (ipv4ToInt(network) & mask);
+}
+
+function suggestCIDR(ip: string): string {
+  if (isIPv6(ip)) {
+    const groups = ip.split(':');
+    const prefix = groups.slice(0, 4).map((g) => g || '0').join(':');
+    return `${prefix}::/64`;
+  }
+  const parts = ip.split('.');
+  if (parts.length !== 4) return `${ip}/24`;
+  return `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
 }
 
 const IPRecordsPage: React.FC = () => {
@@ -104,7 +116,16 @@ const IPRecordsPage: React.FC = () => {
   const [bulkForm] = Form.useForm<BulkUpdateFields>();
   const [form] = Form.useForm<IPRecordCreate & IPRecordUpdate>();
   const watchedSubnetId = useWatch('subnet_id', form) as string | undefined;
+  const watchedIP = useWatch('ip_address', form) as string | undefined;
   const selectedSubnet = subnets.find((s) => s.id === watchedSubnetId);
+
+  // Quick create-subnet modal (triggered when IP doesn't fit any existing subnet)
+  const [quickSubnetOpen, setQuickSubnetOpen] = useState(false);
+  const [quickSubnetSubmitting, setQuickSubnetSubmitting] = useState(false);
+  const [quickSubnetForm] = Form.useForm<SubnetCreate>();
+
+  const ipOutsideSubnet =
+    !!watchedIP && !!selectedSubnet && !isIPInCIDR(watchedIP, selectedSubnet.cidr);
 
   const fetchSubnets = useCallback(async (): Promise<void> => {
     try {
@@ -181,6 +202,38 @@ const IPRecordsPage: React.FC = () => {
     [form]
   );
 
+  const openQuickSubnet = useCallback((): void => {
+    const ip = form.getFieldValue('ip_address') as string | undefined;
+    const env = form.getFieldValue('environment') as string | undefined;
+    quickSubnetForm.setFieldsValue({
+      cidr: ip ? suggestCIDR(ip) : '',
+      name: '',
+      environment: (env as SubnetCreate['environment']) ?? 'Production',
+      ip_version: ip && isIPv6(ip) ? 6 : 4,
+    });
+    setQuickSubnetOpen(true);
+  }, [form, quickSubnetForm]);
+
+  const handleQuickCreateSubnet = useCallback(
+    async (values: SubnetCreate): Promise<void> => {
+      setQuickSubnetSubmitting(true);
+      try {
+        const res = await subnetsApi.create(values);
+        await fetchSubnets();
+        form.setFieldValue('subnet_id', res.data.id);
+        setQuickSubnetOpen(false);
+        quickSubnetForm.resetFields();
+        message.success(`Subnet ${res.data.cidr} created and selected`);
+      } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
+        message.error(axiosErr.response?.data?.detail ?? axiosErr.message ?? 'Failed to create subnet');
+      } finally {
+        setQuickSubnetSubmitting(false);
+      }
+    },
+    [form, quickSubnetForm, fetchSubnets]
+  );
+
   const handleSubmit = useCallback(
     async (values: IPRecordCreate & IPRecordUpdate): Promise<void> => {
       setSubmitting(true);
@@ -215,12 +268,18 @@ const IPRecordsPage: React.FC = () => {
         void fetchRecords(currentPage, filters);
       } catch (err: unknown) {
         const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
-        message.error(axiosErr.response?.data?.detail ?? axiosErr.message ?? 'Operation failed');
+        const detail = axiosErr.response?.data?.detail ?? axiosErr.message ?? 'Operation failed';
+        if (typeof detail === 'string' && detail.toLowerCase().includes('not within')) {
+          // Backend rejected because IP doesn't fall inside the selected subnet
+          openQuickSubnet();
+        } else {
+          message.error(detail);
+        }
       } finally {
         setSubmitting(false);
       }
     },
-    [editingRecord, currentPage, filters, fetchRecords, form]
+    [editingRecord, currentPage, filters, fetchRecords, form, openQuickSubnet]
   );
 
   const handleDelete = useCallback(
@@ -677,8 +736,7 @@ const IPRecordsPage: React.FC = () => {
           <Form.Item
             label="IP Address"
             name="ip_address"
-            dependencies={['subnet_id']}
-            extra={selectedSubnet ? `Must be within ${selectedSubnet.cidr}` : undefined}
+            extra={selectedSubnet && !ipOutsideSubnet ? `Must be within ${selectedSubnet.cidr}` : undefined}
             rules={[
               { required: true, message: 'IP address is required' },
               {
@@ -690,21 +748,28 @@ const IPRecordsPage: React.FC = () => {
                   return Promise.reject(new Error('Enter a valid IPv4 or IPv6 address'));
                 },
               },
-              {
-                validator(_rule, value: string) {
-                  if (!value || !selectedSubnet) return Promise.resolve();
-                  if (!isIPInCIDR(value, selectedSubnet.cidr)) {
-                    return Promise.reject(
-                      new Error(`IP must be within subnet ${selectedSubnet.cidr}`)
-                    );
-                  }
-                  return Promise.resolve();
-                },
-              },
             ]}
           >
             <Input placeholder="e.g. 10.0.0.1" disabled={!!editingRecord} />
           </Form.Item>
+          {ipOutsideSubnet && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={`${watchedIP} is not within subnet ${selectedSubnet!.cidr}`}
+              description="The IP falls outside the selected subnet. You can create a new subnet that covers this IP and continue."
+              action={
+                <Button
+                  size="small"
+                  icon={<ApartmentOutlined />}
+                  onClick={openQuickSubnet}
+                >
+                  Create subnet for this IP
+                </Button>
+              }
+            />
+          )}
 
           <Row gutter={12}>
             <Col span={12}>
@@ -784,6 +849,71 @@ const IPRecordsPage: React.FC = () => {
 
           <Form.Item label="Description" name="description">
             <Input.TextArea rows={2} placeholder="Optional description" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Quick Create Subnet modal */}
+      <Modal
+        title={
+          <Space>
+            <ApartmentOutlined />
+            <span>Create Subnet for this IP</span>
+          </Space>
+        }
+        open={quickSubnetOpen}
+        onCancel={() => {
+          setQuickSubnetOpen(false);
+          quickSubnetForm.resetFields();
+        }}
+        onOk={() => quickSubnetForm.submit()}
+        okText="Create & Select"
+        confirmLoading={quickSubnetSubmitting}
+        width={480}
+        destroyOnClose
+      >
+        <Form
+          form={quickSubnetForm}
+          layout="vertical"
+          onFinish={(values) => void handleQuickCreateSubnet(values as SubnetCreate)}
+          style={{ marginTop: 16 }}
+        >
+          <Form.Item
+            label="CIDR"
+            name="cidr"
+            rules={[{ required: true, message: 'CIDR is required' }]}
+            extra="Auto-suggested from the IP address — adjust if needed"
+          >
+            <Input placeholder="e.g. 10.0.1.0/24" />
+          </Form.Item>
+          <Form.Item
+            label="Subnet Name"
+            name="name"
+            rules={[{ required: true, message: 'Name is required' }]}
+          >
+            <Input placeholder="e.g. Server LAN" />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item label="Environment" name="environment" initialValue="Production">
+                <Select>
+                  {ENV_OPTIONS.map((e) => (
+                    <Select.Option key={e} value={e}>{e}</Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="IP Version" name="ip_version" initialValue={4}>
+                <Select>
+                  <Select.Option value={4}>IPv4</Select.Option>
+                  <Select.Option value={6}>IPv6</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item label="Description" name="description">
+            <Input placeholder="Optional description" />
           </Form.Item>
         </Form>
       </Modal>

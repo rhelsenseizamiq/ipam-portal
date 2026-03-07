@@ -27,6 +27,10 @@ import {
   UnlockOutlined,
   EditOutlined,
   EyeOutlined,
+  CloudServerOutlined,
+  BugOutlined,
+  ApiOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 
 const { Text, Paragraph } = Typography;
@@ -78,10 +82,10 @@ const ALL_SECTIONS: Section[] = [
     content: (
       <>
         <Paragraph>
-          An <Text strong>IP Record</Text> represents a single IPv4 address tracked in your network.
+          An <Text strong>IP Record</Text> represents a single IPv4 or IPv6 address tracked in your network.
         </Paragraph>
         <ul style={{ paddingLeft: 20, marginBottom: 12 }}>
-          <li>IP address + optional hostname</li>
+          <li>IP address (IPv4 or IPv6) + optional hostname</li>
           <li>Parent subnet and optional VRF</li>
           <li>Operating system: <Tag>Linux</Tag><Tag>Windows</Tag><Tag>AIX</Tag><Tag>macOS</Tag><Tag>OpenShift</Tag><Tag>Unknown</Tag></li>
           <li>Status: <Tag color="green">Free</Tag> <Tag color="orange">Reserved</Tag> <Tag color="blue">In Use</Tag></li>
@@ -151,14 +155,15 @@ const ALL_SECTIONS: Section[] = [
     content: (
       <>
         <Paragraph>
-          A <Text strong>Subnet</Text> is a block of IP addresses in CIDR notation (e.g. <Text code>192.168.1.0/24</Text>).
+          A <Text strong>Subnet</Text> is a block of IP addresses in CIDR notation (e.g. <Text code>192.168.1.0/24</Text> or <Text code>2001:db8::/48</Text>).
           Subnets are automatically nested — a smaller subnet is placed as a child of the largest subnet that contains it.
         </Paragraph>
         <ul style={{ paddingLeft: 20, marginBottom: 12 }}>
           <li><Text strong>Container subnets</Text> — have child prefixes; utilization = delegated address space</li>
           <li><Text strong>Leaf subnets</Text> — hold IP records directly; utilization = IP count</li>
+          <li><Tag color="blue">IPv4</Tag> <Tag color="purple">IPv6</Tag> — choose the IP version when creating a subnet; shown as a badge in the table</li>
         </ul>
-        <Paragraph style={{ marginBottom: 4 }}><Text strong>Alert Threshold</Text> <Tag color="orange">New</Tag></Paragraph>
+        <Paragraph style={{ marginBottom: 4 }}><Text strong>Alert Threshold</Text></Paragraph>
         <Paragraph>
           Set an optional utilization alert (1–100%) on any subnet. When the subnet's utilization reaches or exceeds the threshold, a <WarningOutlined style={{ color: '#ff4d4f' }} /> warning icon appears on the subnet row and a red banner is shown on the Dashboard.
         </Paragraph>
@@ -292,6 +297,113 @@ const ALL_SECTIONS: Section[] = [
     ),
   },
   {
+    key: 'ipv6',
+    icon: <GlobalOutlined />,
+    title: 'IPv6 Dual-Stack',
+    badge: 'New',
+    content: (
+      <>
+        <Paragraph>
+          The portal supports both <Text strong>IPv4 and IPv6</Text> subnets and IP records in the same system. Each subnet declares its version when created; IP records automatically inherit that version constraint.
+        </Paragraph>
+        <ul style={{ paddingLeft: 20, marginBottom: 12 }}>
+          <li>When creating a subnet, select <Tag color="blue">IPv4</Tag> or <Tag color="purple">IPv6</Tag> from the IP Version radio button</li>
+          <li>The CIDR must match the selected version — e.g. <Text code>2001:db8::/48</Text> requires IPv6</li>
+          <li>IPv6 IP records (e.g. <Text code>2001:db8::1</Text>) can only be added to IPv6 subnets</li>
+          <li>IPv4 and IPv6 subnets nest independently — no cross-version parent/child relationships</li>
+        </ul>
+        <Alert
+          type="info"
+          showIcon
+          style={{ fontSize: 12 }}
+          message="IPv6 addresses use colon-hex notation. The portal accepts both full and compressed forms (e.g. 2001:db8::1)."
+        />
+      </>
+    ),
+  },
+  {
+    key: 'ldap',
+    icon: <SafetyCertificateOutlined />,
+    title: 'LDAP / AD Authentication',
+    badge: 'New',
+    content: (
+      <>
+        <Paragraph>
+          When enabled by an administrator, users can log in with their <Text strong>Active Directory or LDAP credentials</Text> — no separate IPAM password required.
+        </Paragraph>
+        <ul style={{ paddingLeft: 20, marginBottom: 12 }}>
+          <li>LDAP login is configured server-side via environment variables (<Text code>LDAP_ENABLED</Text>, <Text code>LDAP_SERVER</Text>, etc.)</li>
+          <li>First-time LDAP login auto-provisions the user with the <Tag>Viewer</Tag> role</li>
+          <li>Administrators can promote LDAP users to Operator or Administrator via the Users page</li>
+          <li>LDAP users cannot use the "Change Password" feature — password management is handled by the directory</li>
+        </ul>
+        <Alert
+          type="info"
+          showIcon
+          style={{ fontSize: 12 }}
+          message='When LDAP is active, an "LDAP/AD Authentication Enabled" badge is shown on the login page.'
+        />
+      </>
+    ),
+  },
+  {
+    key: 'dns-conflicts',
+    icon: <BugOutlined />,
+    title: 'DNS Conflict Detection',
+    badge: 'New',
+    content: (
+      <>
+        <Paragraph>
+          The <Text strong>DNS Conflict Scanner</Text> checks IP records in a subnet against live DNS to detect inconsistencies.
+        </Paragraph>
+        <Paragraph style={{ marginBottom: 4 }}><Text strong>Conflict types detected:</Text></Paragraph>
+        <ul style={{ paddingLeft: 20, marginBottom: 12 }}>
+          <li><Tag color="orange">FORWARD_MISMATCH</Tag> — hostname resolves to a different IP address</li>
+          <li><Tag color="gold">PTR_MISMATCH</Tag> — reverse (PTR) lookup returns a different hostname</li>
+          <li><Tag color="red">NO_FORWARD</Tag> — hostname has no DNS record at all</li>
+          <li><Tag color="volcano">DUPLICATE_HOSTNAME</Tag> — same hostname assigned to two or more IP records in the subnet</li>
+        </ul>
+        <Paragraph>
+          IP records without a hostname are skipped. To run a scan, open any subnet's detail panel and click <Text strong>Scan Conflicts</Text>.
+        </Paragraph>
+        <Alert
+          type="warning"
+          showIcon
+          style={{ fontSize: 12 }}
+          message="Scanning requires Operator role or higher. Results are not stored — re-run the scan to refresh."
+        />
+      </>
+    ),
+  },
+  {
+    key: 'integrations',
+    icon: <ApiOutlined />,
+    title: 'Integrations',
+    badge: 'New',
+    content: (
+      <>
+        <Paragraph>
+          The <Text strong>Integrations</Text> page (sidebar → Integrations) connects the portal to external systems so you can bulk-import data without manual entry.
+        </Paragraph>
+        <Paragraph style={{ marginBottom: 4 }}><Text strong><CloudServerOutlined /> VMware vSphere Import</Text></Paragraph>
+        <ul style={{ paddingLeft: 20, marginBottom: 12 }}>
+          <li>Enter your vCenter host, username, and password — credentials are used only for this request and never stored</li>
+          <li>The portal queries vCenter via the VMware API and lists all discovered virtual machines</li>
+          <li>Each VM shows its name, OS, power state, and all detected IP addresses</li>
+          <li>Select the VMs you want, choose a target IPAM subnet and IP address per VM, then click <Text strong>Import</Text></li>
+          <li>Duplicate IPs (same address already in the target subnet) are skipped with a warning</li>
+          <li>Results show: created / skipped / error counts and any per-VM error messages</li>
+        </ul>
+        <Alert
+          type="warning"
+          showIcon
+          style={{ fontSize: 12 }}
+          message="vSphere import requires Operator role or higher."
+        />
+      </>
+    ),
+  },
+  {
     key: 'roles',
     icon: <TeamOutlined />,
     title: 'User Roles & Permissions',
@@ -316,7 +428,7 @@ const ALL_SECTIONS: Section[] = [
             </Space>
             <br />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              All Viewer permissions plus: create/edit subnets, IP records, VRFs, aggregates, IP ranges; reserve/release IPs; bulk operations; run network scans.
+              All Viewer permissions plus: create/edit subnets, IP records, VRFs, aggregates, IP ranges; reserve/release IPs; bulk operations; run network scans; run DNS conflict detection; use the vSphere import integration.
             </Text>
           </li>
           <li style={{ marginTop: 8 }}>
