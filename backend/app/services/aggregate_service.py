@@ -47,9 +47,11 @@ def _count_contained(agg: Aggregate, all_subnets: list) -> int:
             continue
         try:
             s_net = ipaddress.ip_network(subnet.cidr, strict=False)
+            if s_net.version != agg_net.version:
+                continue
             if s_net.subnet_of(agg_net):
                 count += 1
-        except ValueError:
+        except (ValueError, TypeError):
             continue
     return count
 

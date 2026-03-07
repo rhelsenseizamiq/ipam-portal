@@ -20,8 +20,18 @@ const IntegrationsPage: React.FC = () => {
 
   const fetchSubnets = useCallback(async (): Promise<void> => {
     try {
-      const res = await subnetsApi.list({ page_size: 1000 });
-      setSubnets(res.data.items);
+      // Load all subnets in batches (max page_size=200 per request)
+      let page = 1;
+      let all: SubnetDetail[] = [];
+      let total = 1;
+      while (all.length < total) {
+        const res = await subnetsApi.list({ page, page_size: 200 });
+        all = [...all, ...res.data.items];
+        total = res.data.total;
+        if (res.data.items.length === 0) break;
+        page += 1;
+      }
+      setSubnets(all);
     } catch {
       message.error('Failed to load subnets');
     }
