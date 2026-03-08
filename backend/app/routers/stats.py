@@ -75,6 +75,20 @@ async def get_dashboard_stats(
             "alert_threshold": alert_threshold,
         })
 
+    # IPv4 / IPv6 subnet + IP record counts
+    subnet_v4_count = sum(1 for s in all_subnets if getattr(s, "ip_version", 4) == 4)
+    subnet_v6_count = sum(1 for s in all_subnets if getattr(s, "ip_version", 4) == 6)
+
+    ip_v4_count = 0
+    ip_v6_count = 0
+    for subnet in all_subnets:
+        counts = ip_counts.get(subnet.id, {})
+        total_in_subnet = sum(counts.values())
+        if getattr(subnet, "ip_version", 4) == 6:
+            ip_v6_count += total_in_subnet
+        else:
+            ip_v4_count += total_in_subnet
+
     # Critical subnets: those exceeding their alert_threshold
     critical_subnets = [
         s for s in subnet_utils
@@ -107,6 +121,10 @@ async def get_dashboard_stats(
         "total_ips": total_ips,
         "status_breakdown": status_breakdown,
         "os_breakdown": os_breakdown,
+        "subnet_v4_count": subnet_v4_count,
+        "subnet_v6_count": subnet_v6_count,
+        "ip_v4_count": ip_v4_count,
+        "ip_v6_count": ip_v6_count,
         "environment_breakdown": env_breakdown,
         "total_subnets": total_subnets,
         "total_vrfs": total_vrfs,

@@ -22,6 +22,10 @@ export interface DashboardStats {
   total_subnets: number;
   total_vrfs: number;
   total_aggregates: number;
+  subnet_v4_count: number;
+  subnet_v6_count: number;
+  ip_v4_count: number;
+  ip_v6_count: number;
   critical_subnets: SubnetCritical[];
   recent_activity: ActivityItem[];
 }
