@@ -33,6 +33,25 @@ docker compose build frontend api && docker compose up -d frontend api
 
 ---
 
+## Screenshots
+
+### Login
+![Login](docs/screenshots/01-login.png)
+
+### Self-Registration
+![Registration](docs/screenshots/02-registration.png)
+
+### Portal Home
+![Portal Home](docs/screenshots/03-portal-home.png)
+
+### IPAM Dashboard
+![Dashboard](docs/screenshots/04-dashboard.png)
+
+### Password Vault
+![Password Vault](docs/screenshots/05-vault.png)
+
+---
+
 ## Configuration (`backend/.env`)
 
 | Variable | Default | Description |
