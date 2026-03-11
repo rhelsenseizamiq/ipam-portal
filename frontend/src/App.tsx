@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './pages/Login/LoginPage';
+import HomePage from './pages/Home/HomePage';
 import DashboardPage from './pages/Dashboard/DashboardPage';
 import IPRecordsPage from './pages/IPRecords/IPRecordsPage';
 import SubnetsPage from './pages/Subnets/SubnetsPage';
@@ -14,6 +15,10 @@ import AuditLogPage from './pages/AuditLog/AuditLogPage';
 import VRFsPage from './pages/VRFs/VRFsPage';
 import AggregatesPage from './pages/Aggregates/AggregatesPage';
 import IntegrationsPage from './pages/Integrations/IntegrationsPage';
+import VaultPage from './pages/Vault/VaultPage';
+import VaultLayout from './components/layout/VaultLayout';
+import RegistrationPage from './pages/Registration/RegistrationPage';
+import PendingApprovalsPage from './pages/Users/PendingApprovalsPage';
 
 const UnauthorizedPage: React.FC = () => (
   <div
@@ -51,10 +56,18 @@ const App: React.FC = () => (
         <Routes>
           {/* Public routes */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegistrationPage />} />
           <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-          {/* Redirect root to dashboard */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          {/* Home page — portal selector */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute requiredRole="Viewer">
+                <HomePage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Protected routes — all wrapped in AppLayout */}
           <Route
@@ -156,8 +169,30 @@ const App: React.FC = () => (
             }
           />
 
-          {/* Catch-all: redirect unknown paths to dashboard */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route
+            path="/pending-approvals"
+            element={
+              <ProtectedRoute requiredRole="Administrator">
+                <AppLayout>
+                  <PendingApprovalsPage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/vault"
+            element={
+              <ProtectedRoute requiredRole="Viewer">
+                <VaultLayout>
+                  <VaultPage />
+                </VaultLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Catch-all: redirect unknown paths to home */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

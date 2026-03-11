@@ -10,6 +10,7 @@ from app.models.user import UserInToken
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.audit_log import PaginatedResponse
+from app.schemas.registration import ApproveRequest, RejectRequest
 from app.schemas.user import UserCreate, UserResponse, UserResetPassword, UserUpdate
 from app.services.user_service import UserService
 
@@ -63,6 +64,57 @@ async def create_user(
     return await service.create(
         data=body,
         created_by=current_user.sub,
+        client_ip=_get_client_ip(request),
+    )
+
+
+@router.get("/pending", response_model=PaginatedResponse[UserResponse])
+async def list_pending_users(
+    request: Request,
+    pagination: PaginationParams = Depends(),
+    current_user: UserInToken = Depends(_ADMIN_ONLY),
+) -> PaginatedResponse[UserResponse]:
+    service = _build_service()
+    users, total = await service.list_pending(
+        skip=pagination.skip,
+        limit=pagination.page_size,
+    )
+    return PaginatedResponse.create(
+        items=users,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
+
+
+@router.post("/{id}/approve", response_model=UserResponse)
+async def approve_user(
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
+    request: Request,
+    body: ApproveRequest,
+    current_user: UserInToken = Depends(_ADMIN_ONLY),
+) -> UserResponse:
+    service = _build_service()
+    return await service.approve(
+        id=id,
+        data=body,
+        approved_by=current_user.sub,
+        client_ip=_get_client_ip(request),
+    )
+
+
+@router.post("/{id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+async def reject_user(
+    id: Annotated[str, Path(pattern=_OBJECTID_PATTERN)],
+    request: Request,
+    body: RejectRequest,
+    current_user: UserInToken = Depends(_ADMIN_ONLY),
+) -> None:
+    service = _build_service()
+    await service.reject(
+        id=id,
+        data=body,
+        rejected_by=current_user.sub,
         client_ip=_get_client_ip(request),
     )
 

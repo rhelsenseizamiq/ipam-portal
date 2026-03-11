@@ -115,6 +115,20 @@ class AuthService:
                 # Fall through to token generation below
             # else: user exists and is a local user — fall through to local auth below
 
+        # ── Approval status check ──────────────────────────────────────────
+        if user is not None:
+            approval_status = getattr(user, "approval_status", "approved")
+            if approval_status == "pending":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your registration is awaiting administrator approval",
+                )
+            if approval_status == "rejected":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your registration has been rejected. Contact your administrator.",
+                )
+
         # ── Local auth path ────────────────────────────────────────────────
         if user is None or not user.is_active:
             await self._audit.log(

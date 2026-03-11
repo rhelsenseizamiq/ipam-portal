@@ -14,6 +14,10 @@ class AuditAction(str, Enum):
     LOGOUT = "LOGOUT"
     LOGIN_FAILED = "LOGIN_FAILED"
     PASSWORD_RESET = "PASSWORD_RESET"
+    REVEAL = "REVEAL"
+    REGISTER = "REGISTER"
+    APPROVE = "APPROVE"
+    REJECT = "REJECT"
 
 
 class ResourceType(str, Enum):
@@ -25,6 +29,8 @@ class ResourceType(str, Enum):
     RIR = "rir"
     AGGREGATE = "aggregate"
     IP_RANGE = "ip_range"
+    CABINET = "cabinet"
+    PASSWORD_ENTRY = "password_entry"
 
 
 class AuditLog(BaseModel):

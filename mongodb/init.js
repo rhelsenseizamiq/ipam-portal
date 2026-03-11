@@ -21,6 +21,7 @@ db.createCollection("users");
 db.users.createIndex({ username: 1 }, { unique: true });
 db.users.createIndex({ role: 1 });
 db.users.createIndex({ is_active: 1 });
+db.users.createIndex({ approval_status: 1 });
 
 print("✓ users indexes created");
 
@@ -96,6 +97,20 @@ db.ip_ranges.createIndex({ subnet_id: 1, start_int: 1, end_int: 1 });
 db.ip_ranges.createIndex({ vrf_id: 1 });
 
 print("✓ ip_ranges indexes created");
+
+// ── cabinets collection ───────────────────────────────────────────────────────
+db.createCollection("cabinets");
+db.cabinets.createIndex({ name: 1 }, { unique: true });
+db.cabinets.createIndex({ member_usernames: 1 });
+
+print("✓ cabinets indexes created");
+
+// ── password_entries collection ───────────────────────────────────────────────
+db.createCollection("password_entries");
+db.password_entries.createIndex({ cabinet_id: 1, created_at: -1 });
+db.password_entries.createIndex({ tags: 1 });
+
+print("✓ password_entries indexes created");
 
 print("─────────────────────────────────────────");
 print("MongoDB initialization complete.");

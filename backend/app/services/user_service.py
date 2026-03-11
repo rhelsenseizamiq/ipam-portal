@@ -9,6 +9,7 @@ from app.models.user import Role, User
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.schemas.registration import RegisterRequest, ApproveRequest, RejectRequest
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,8 @@ def _to_response(user: User) -> UserResponse:
         email=user.email,
         role=user.role,
         is_active=user.is_active,
+        approval_status=getattr(user, "approval_status", "approved"),
+        registration_note=getattr(user, "registration_note", None),
         created_at=user.created_at,
         updated_at=user.updated_at,
         created_by=user.created_by,
@@ -218,6 +221,138 @@ class UserService:
             resource_id=id,
             before=before_snapshot,
             detail=f"Permanently deleted user '{user.username}'",
+        )
+
+    async def register(
+        self,
+        data: RegisterRequest,
+        client_ip: str,
+    ) -> UserResponse:
+        existing = await self._users.find_by_username(data.username)
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Username '{data.username}' is already taken",
+            )
+
+        now = datetime.now(timezone.utc)
+        doc = {
+            "username": data.username,
+            "password_hash": hash_password(data.password),
+            "full_name": data.full_name,
+            "email": data.email,
+            "role": Role.VIEWER.value,
+            "is_active": False,
+            "approval_status": "pending",
+            "registration_note": data.note,
+            "rejection_reason": None,
+            "auth_type": "local",
+            "created_at": now,
+            "updated_at": now,
+            "created_by": "self-registration",
+            "last_login": None,
+        }
+
+        created_user = await self._users.create(doc)
+        await self._audit.log(
+            action=AuditAction.REGISTER,
+            resource_type=ResourceType.USER,
+            username=data.username,
+            user_role="anonymous",
+            client_ip=client_ip,
+            resource_id=created_user.id,
+            detail=f"Self-registration submitted for username '{data.username}'",
+        )
+        return _to_response(created_user)
+
+    async def list_pending(
+        self,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[UserResponse], int]:
+        users, total = await self._users.find_all(
+            {"approval_status": "pending"}, skip=skip, limit=limit
+        )
+        return [_to_response(u) for u in users], total
+
+    async def approve(
+        self,
+        id: str,
+        data: ApproveRequest,
+        approved_by: str,
+        client_ip: str,
+    ) -> UserResponse:
+        user = await self._users.find_by_id(id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        if getattr(user, "approval_status", "approved") != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is not in pending status",
+            )
+
+        update_fields = {
+            "approval_status": "approved",
+            "is_active": True,
+            "role": data.role.value,
+            "updated_at": datetime.now(timezone.utc),
+        }
+        updated_user = await self._users.update(id, update_fields)
+        if updated_user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        if data.cabinet_ids:
+            from app.repositories.cabinet_repository import CabinetRepository
+            from app.core.database import get_database
+            db = get_database()
+            cabinet_repo = CabinetRepository(db["cabinets"])
+            for cabinet_id in data.cabinet_ids:
+                await cabinet_repo.add_member(cabinet_id, user.username)
+
+        await self._audit.log(
+            action=AuditAction.APPROVE,
+            resource_type=ResourceType.USER,
+            username=approved_by,
+            user_role="Administrator",
+            client_ip=client_ip,
+            resource_id=id,
+            after={"role": data.role.value, "cabinet_ids": data.cabinet_ids},
+            detail=f"Approved registration for user '{user.username}' with role {data.role.value}",
+        )
+        return _to_response(updated_user)
+
+    async def reject(
+        self,
+        id: str,
+        data: RejectRequest,
+        rejected_by: str,
+        client_ip: str,
+    ) -> None:
+        user = await self._users.find_by_id(id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        if getattr(user, "approval_status", "approved") != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is not in pending status",
+            )
+
+        await self._users.update(id, {
+            "approval_status": "rejected",
+            "rejection_reason": data.reason,
+            "updated_at": datetime.now(timezone.utc),
+        })
+
+        await self._audit.log(
+            action=AuditAction.REJECT,
+            resource_type=ResourceType.USER,
+            username=rejected_by,
+            user_role="Administrator",
+            client_ip=client_ip,
+            resource_id=id,
+            detail=f"Rejected registration for user '{user.username}'",
         )
 
     async def deactivate(

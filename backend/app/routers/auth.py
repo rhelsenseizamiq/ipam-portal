@@ -11,7 +11,9 @@ from app.models.user import UserInToken
 from app.repositories.audit_log_repository import AuditLogRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, TokenResponse
+from app.schemas.registration import RegisterRequest
 from app.services.auth_service import AuthService
+from app.services.user_service import UserService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -28,6 +30,24 @@ def _build_auth_service(db=None) -> AuthService:
         user_repo=UserRepository(db["users"]),
         audit_repo=AuditLogRepository(db["audit_logs"]),
     )
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
+async def register(
+    request: Request,
+    body: RegisterRequest,
+) -> dict:
+    from app.repositories.audit_log_repository import AuditLogRepository
+    from app.repositories.user_repository import UserRepository
+    db = get_database()
+    service = UserService(
+        user_repo=UserRepository(db["users"]),
+        audit_repo=AuditLogRepository(db["audit_logs"]),
+    )
+    client_ip = _get_client_ip(request)
+    await service.register(data=body, client_ip=client_ip)
+    return {"message": "Registration submitted. An administrator will review your request."}
 
 
 @router.post("/login", response_model=TokenResponse)

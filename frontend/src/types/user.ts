@@ -7,6 +7,9 @@ export interface User {
   email: string | null;
   role: Role;
   is_active: boolean;
+  approval_status: 'pending' | 'approved' | 'rejected';
+  registration_note?: string | null;
+  rejection_reason?: string | null;
   created_at: string;
   updated_at: string;
   created_by: string;
@@ -19,6 +22,14 @@ export interface UserCreate {
   full_name: string;
   email?: string;
   role: Role;
+}
+
+export interface RegisterRequest {
+  username: string;
+  password: string;
+  full_name: string;
+  email?: string;
+  note?: string;
 }
 
 export interface UserUpdate {

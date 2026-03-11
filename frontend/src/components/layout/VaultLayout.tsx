@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
 import { Layout, Button, Tooltip } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
-import Sidebar from './Sidebar';
+import { HomeOutlined, QuestionCircleOutlined, LockOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import AppHeader from './Header';
-import HelpDrawer from './HelpDrawer';
+import VaultHelpDrawer from './VaultHelpDrawer';
 
 const { Sider, Header, Content } = Layout;
 
-const SIDER_WIDTH = 220;
+const SIDER_WIDTH = 200;
 const SIDER_COLLAPSED_WIDTH = 64;
 
-const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const VaultLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -23,7 +24,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         width={SIDER_WIDTH}
         collapsedWidth={SIDER_COLLAPSED_WIDTH}
         style={{
-          overflow: 'auto',
           height: '100vh',
           position: 'fixed',
           left: 0,
@@ -35,6 +35,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         }}
         theme="dark"
       >
+        {/* Vault header */}
         <div
           style={{
             height: 48,
@@ -42,9 +43,10 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             alignItems: 'center',
             justifyContent: collapsed ? 'center' : 'flex-start',
             padding: collapsed ? 0 : '0 16px',
-            color: '#fff',
+            gap: 8,
+            color: '#52c41a',
             fontWeight: 700,
-            fontSize: collapsed ? 14 : 16,
+            fontSize: collapsed ? 14 : 15,
             letterSpacing: 0.5,
             borderBottom: '1px solid rgba(255,255,255,0.1)',
             whiteSpace: 'nowrap',
@@ -52,23 +54,41 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             flexShrink: 0,
           }}
         >
-          {collapsed ? 'IP' : 'IPAM Portal'}
+          <LockOutlined style={{ fontSize: 16, flexShrink: 0 }} />
+          {!collapsed && 'Password Vault'}
         </div>
 
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          <Sidebar collapsed={collapsed} />
-        </div>
+        {/* Spacer — no nav items for the vault (cabinet list lives in page content) */}
+        <div style={{ flex: 1 }} />
 
+        {/* Bottom actions */}
         <div
           style={{
             borderTop: '1px solid rgba(255,255,255,0.1)',
             padding: collapsed ? '12px 0' : '12px 16px',
             display: 'flex',
-            justifyContent: collapsed ? 'center' : 'flex-start',
+            flexDirection: 'column',
+            gap: 4,
             flexShrink: 0,
           }}
         >
-          <Tooltip title="Help & Concepts" placement="right">
+          <Tooltip title="Home" placement="right">
+            <Button
+              type="text"
+              icon={<HomeOutlined />}
+              onClick={() => navigate('/')}
+              style={{
+                color: 'rgba(255,255,255,0.65)',
+                padding: collapsed ? '4px 8px' : '4px 0',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                width: '100%',
+              }}
+            >
+              {collapsed ? null : 'Home'}
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="PassManager Concepts & Help" placement="right">
             <Button
               type="text"
               icon={<QuestionCircleOutlined />}
@@ -124,9 +144,9 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </Content>
       </Layout>
 
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <VaultHelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
     </Layout>
   );
 };
 
-export default AppLayout;
+export default VaultLayout;

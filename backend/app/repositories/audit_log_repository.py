@@ -8,7 +8,7 @@ from app.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
-_SENSITIVE_KEYS = frozenset({"password_hash", "password"})
+_SENSITIVE_KEYS = frozenset({"password_hash", "password", "ciphertext", "iv"})
 
 
 def _strip_sensitive(data: Optional[dict]) -> Optional[dict]:

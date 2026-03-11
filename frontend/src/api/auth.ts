@@ -1,5 +1,6 @@
 import apiClient from './client';
 import type { TokenResponse } from '../types/auth';
+import type { RegisterRequest } from '../types/user';
 
 interface MeResponse {
   username: string;
@@ -26,4 +27,7 @@ export const authApi = {
     apiClient.post<void>('/auth/change-password', payload),
 
   config: () => apiClient.get<{ ldap_enabled: boolean }>('/auth/config'),
+
+  register: (data: RegisterRequest) =>
+    apiClient.post<{ message: string }>('/auth/register', data),
 };

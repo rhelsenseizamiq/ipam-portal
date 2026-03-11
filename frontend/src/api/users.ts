@@ -30,4 +30,13 @@ export const usersApi = {
   activate: (id: string) => apiClient.post<User>(`/users/${id}/activate`),
 
   deactivate: (id: string) => apiClient.post<User>(`/users/${id}/deactivate`),
+
+  pending: (params: UserListParams = {}) =>
+    apiClient.get<PaginatedResponse<User>>('/users/pending', { params }),
+
+  approve: (id: string, data: { role: string; cabinet_ids: string[] }) =>
+    apiClient.post<User>(`/users/${id}/approve`, data),
+
+  reject: (id: string, data: { reason?: string }) =>
+    apiClient.post<void>(`/users/${id}/reject`, data),
 };

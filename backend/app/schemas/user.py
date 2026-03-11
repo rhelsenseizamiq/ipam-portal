@@ -49,6 +49,8 @@ class UserResponse(BaseModel):
     email: Optional[str]
     role: Role
     is_active: bool
+    approval_status: str = "approved"
+    registration_note: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     created_by: str

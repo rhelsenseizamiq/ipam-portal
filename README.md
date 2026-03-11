@@ -1,6 +1,6 @@
-# IPAM Portal
+# IOP — Infrastructure Operations Platform
 
-A self-hosted IP Address Management portal with NetBox-style prefix hierarchy, dual-stack IPv4/IPv6, vSphere VM import, DNS conflict detection, and optional LDAP/AD authentication.
+A self-hosted IP Address Management portal with NetBox-style prefix hierarchy, dual-stack IPv4/IPv6, vSphere VM import, DNS conflict detection, Password Vault, and optional LDAP/AD authentication.
 
 ---
 
@@ -11,7 +11,7 @@ A self-hosted IP Address Management portal with NetBox-style prefix hierarchy, d
 | Backend | Python 3.11 · FastAPI · Motor (async MongoDB) · Pydantic v2 |
 | Frontend | React 18 · Vite · TypeScript · Ant Design 5 · recharts |
 | Database | MongoDB 7 |
-| Auth | JWT (HS256) · local accounts · optional LDAP/AD via ldap3 |
+| Auth | JWT (HS256) · local accounts · self-registration with admin approval · optional LDAP/AD via ldap3 |
 | Container | Docker Compose · Nginx reverse proxy |
 
 ---
@@ -19,7 +19,7 @@ A self-hosted IP Address Management portal with NetBox-style prefix hierarchy, d
 ## Quick Start
 
 ```bash
-git clone <repo-url> && cd ipam-portal
+git clone <repo-url> && cd iop
 cp backend/.env.example backend/.env   # edit values
 docker compose up --build -d
 ```
@@ -43,6 +43,7 @@ docker compose build frontend api && docker compose up -d frontend api
 | `JWT_EXPIRE_MINUTES` | `60` | Token lifetime |
 | `INITIAL_ADMIN_USERNAME` | `admin` | Bootstrap admin (remove after first login) |
 | `INITIAL_ADMIN_PASSWORD` | — | Bootstrap admin password |
+| `VAULT_MASTER_KEY` | — | AES-256-GCM master key for Password Vault (base64, min 32 bytes) |
 | `LDAP_ENABLED` | `false` | Enable LDAP/AD login |
 | `LDAP_SERVER` | — | LDAP server hostname |
 | `LDAP_PORT` | `389` | LDAP port |
@@ -66,23 +67,40 @@ docker compose build frontend api && docker compose up -d frontend api
 - IP Ranges — named spans (e.g. DHCP pools) within a subnet
 - CSV import / export with validation and template download
 
-### Dashboard & Operations (v2.1)
+### Dashboard & Operations
 - recharts dashboard: IP status donut, environment bar, OS bar, top subnets, recent activity
 - Subnet utilization alert threshold — warning badge on row + dashboard banner when exceeded
 - Bulk reserve / release / update-fields for multiple IP records
 - Per-record change history with before→after field diffs
 
-### Network Scanner (v1.3)
+### Network Scanner
 - TCP-based host discovery for any CIDR; no ICMP/root needed
 - OS fingerprinting (Linux, Windows, macOS, OpenShift, AIX) + reverse DNS
 - Select discovered hosts → bulk-import as IP records
 
-### IPv6, LDAP, Integrations & DNS Conflicts (v3.0)
+### IPv6, LDAP, Integrations & DNS Conflicts
 - **IPv6 dual-stack** — subnets and IP records support both IPv4 and IPv6; ip_version badge in table
 - **LDAP/AD authentication** — optional; first-login auto-provisions user as Viewer; local auth unchanged
 - **DNS conflict detection** — per-subnet scan: FORWARD_MISMATCH, PTR_MISMATCH, NO_FORWARD, DUPLICATE_HOSTNAME
 - **vSphere VM import** — connect to vCenter, select VMs, map to subnets, bulk-import as IP records
-- **Smart subnet creation** — when adding an IP that doesn't fit any subnet, a "Create subnet for this IP" prompt auto-suggests the CIDR and creates + selects the subnet inline
+- **Smart subnet creation** — when adding an IP that doesn't fit any subnet, inline prompt auto-suggests the CIDR and creates + selects it
+
+### Password Vault
+- Cabinet-based secret storage: each cabinet has a name, description, and explicit member list
+- AES-256-GCM encryption per cabinet key derived via HKDF-SHA256 from `VAULT_MASTER_KEY`
+- Per-entry reveal with 30-second auto-clear (password never persists in frontend state)
+- Administrators manage cabinets; cabinet membership controls access regardless of IPAM role
+- Full audit trail: `REVEAL`, `CREATE`, `UPDATE`, `DELETE` actions logged per entry
+
+### Self-Registration with Admin Approval
+- Public `/register` page — any visitor can submit a registration request with username, full name, email, password, and an optional note
+- New registrations land in **pending** state (`is_active=False`) — no login until approved
+- Administrators see a **Pending Approvals** page (sidebar badge shows live count)
+- Approve: assign role (Viewer / Operator / Administrator) and optionally add the user to one or more Vault cabinets in the same step
+- Reject: optional reason stored for audit; rejected users receive a clear message on login attempt
+- Admin-created users (via Users page) bypass approval entirely and can log in immediately
+- LDAP auto-provisioned users are unaffected — they are auto-approved on first login as before
+- Registration endpoint is rate-limited at 5 requests/minute
 
 ---
 
@@ -90,9 +108,9 @@ docker compose build frontend api && docker compose up -d frontend api
 
 | Role | Permissions |
 |------|-------------|
-| **Viewer** | Read-only: all pages, change history |
+| **Viewer** | Read-only: all IPAM pages, change history, Vault (own cabinets) |
 | **Operator** | Viewer + create/edit/reserve/release, bulk ops, network scan, DNS conflict scan, vSphere import, subnet quick-create |
-| **Administrator** | Operator + delete, user management, full audit log |
+| **Administrator** | Operator + delete, user management, audit log, pending approvals, cabinet management |
 
 ---
 
@@ -101,15 +119,32 @@ docker compose build frontend api && docker compose up -d frontend api
 All endpoints prefixed `/api/v1`. Auth via `Authorization: Bearer <token>`.
 
 ### Auth
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
+| POST | `/auth/register` | — | Submit self-registration (rate-limited 5/min) |
 | POST | `/auth/login` | — | Login (local or LDAP) |
 | POST | `/auth/logout` | Viewer+ | Invalidate token |
 | GET | `/auth/config` | — | `{ldap_enabled: bool}` |
 | GET | `/auth/me` | Viewer+ | Current user |
 | POST | `/auth/change-password` | Viewer+ | Change password (local only) |
 
+### Users
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/users` | Admin | List all users |
+| POST | `/users` | Admin | Create user (bypasses approval) |
+| GET | `/users/pending` | Admin | List pending registrations |
+| POST | `/users/{id}/approve` | Admin | Approve with role + cabinet assignments |
+| POST | `/users/{id}/reject` | Admin | Reject with optional reason |
+| GET/PUT/DELETE | `/users/{id}` | Admin | Get / update / delete user |
+| POST | `/users/{id}/reset-password` | Admin | Reset password |
+| POST | `/users/{id}/activate` | Admin | Activate user |
+| POST | `/users/{id}/deactivate` | Admin | Deactivate user |
+
 ### Subnets
+
 | Method | Path | Auth |
 |--------|------|------|
 | GET/POST | `/subnets` | Viewer / Operator+ |
@@ -119,6 +154,7 @@ All endpoints prefixed `/api/v1`. Auth via `Authorization: Bearer <token>`.
 | POST | `/subnets/{id}/scan-conflicts` | Operator+ |
 
 ### IP Records
+
 | Method | Path | Auth |
 |--------|------|------|
 | GET/POST | `/ip-records` | Viewer / Operator+ |
@@ -134,6 +170,7 @@ All endpoints prefixed `/api/v1`. Auth via `Authorization: Bearer <token>`.
 | GET | `/ip-records/by-ip/{ip_address}` | Viewer+ |
 
 ### Other Resources
+
 | Resource | Base path | Notes |
 |----------|-----------|-------|
 | VRFs | `/vrfs` | Full CRUD |
@@ -144,30 +181,40 @@ All endpoints prefixed `/api/v1`. Auth via `Authorization: Bearer <token>`.
 | vSphere Discover | `/integrations/vsphere/discover` | POST, Operator+ |
 | vSphere Import | `/integrations/vsphere/import` | POST, Operator+ |
 | Dashboard Stats | `/stats` | GET, Viewer+ |
-| Users | `/users` | Admin only |
+| Cabinets | `/cabinets` | Admin CRUD; member list controls access |
+| Password Entries | `/passwords` | Viewer (own cabinets); reveal via `/{id}/reveal` |
 
 ---
 
 ## Project Structure
 
 ```
-ipam-portal/
+iop/
 ├── backend/
 │   └── app/
 │       ├── config.py            Settings (Pydantic BaseSettings)
 │       ├── main.py              FastAPI app + router registration
+│       ├── core/
+│       │   ├── vault.py         AES-256-GCM encryption + HKDF key derivation
+│       │   └── …                database, security, password, rate_limiter
 │       ├── models/              MongoDB document models
 │       ├── schemas/             Pydantic request/response schemas
+│       │   └── registration.py  RegisterRequest, ApproveRequest, RejectRequest
 │       ├── repositories/        BaseRepository[T] + domain repos
-│       ├── services/            Business logic
+│       ├── services/            Business logic (auth, user, subnet, vault, …)
 │       └── routers/             FastAPI routers
 ├── frontend/
 │   └── src/
 │       ├── api/                 Axios API clients
-│       ├── components/          Shared UI (Sidebar, HelpDrawer, …)
-│       ├── pages/               Feature pages
+│       ├── components/          Shared UI (Sidebar, HelpDrawer, VaultLayout, …)
+│       ├── pages/
+│       │   ├── Registration/    Self-registration form + success card
+│       │   ├── Users/           UsersPage, PendingApprovalsPage, ApproveModal
+│       │   ├── Vault/           Cabinet browser + password entries
+│       │   └── …                Dashboard, IPRecords, Subnets, VRFs, etc.
 │       ├── types/               TypeScript types
 │       └── constants/           Environments, OS colors, etc.
+├── mongodb/init.js              Index definitions (including approval_status)
 ├── nginx/nginx.conf
 └── docker-compose.yml
 ```
@@ -176,12 +223,18 @@ ipam-portal/
 
 ## Changelog
 
+### v4.0.0
+- **Self-registration with admin approval** — public `/register` page; pending users cannot log in until an administrator approves them with a role and optional cabinet assignments; rejected users receive a clear error message on login; admin sidebar shows live pending count badge
+- **Password Vault** — cabinet-based secret storage with AES-256-GCM encryption (HKDF-SHA256 per-cabinet key from `VAULT_MASTER_KEY`); 30-second reveal with auto-clear; full audit trail
+- **Portal home page** — `/` landing page to choose between IPAM and Vault portals after login
+- New audit actions: `REGISTER`, `APPROVE`, `REJECT`, `REVEAL`
+
 ### v3.0.0
 - IPv6 dual-stack: subnets and IP records support IPv4 and IPv6; ip_version badge in table
 - Optional LDAP/AD authentication with auto-provisioning on first login
 - DNS conflict detection per subnet (FORWARD_MISMATCH, PTR_MISMATCH, NO_FORWARD, DUPLICATE_HOSTNAME)
 - vSphere VM import via pyVmomi: 3-step wizard (connect → select VMs → results)
-- Smart subnet creation: when adding an IP not covered by any subnet, inline "Create subnet for this IP" modal pre-fills CIDR and auto-selects after creation
+- Smart subnet creation: when adding an IP not covered by any subnet, inline modal pre-fills CIDR and auto-selects after creation
 - Fix: cross-version `subnet_of()` TypeError on `/aggregates` (IPv4 vs IPv6 comparison)
 - Fix: integrations subnet loader hit page_size cap; now paginates correctly
 

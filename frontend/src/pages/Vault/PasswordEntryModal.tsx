@@ -1,0 +1,232 @@
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Form,
+  Input,
+  Modal,
+  Tag,
+  Tooltip,
+  message,
+} from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import { passwordsApi } from '../../api/vault';
+import type { PasswordEntry, PasswordEntryCreate, PasswordEntryUpdate } from '../../types/vault';
+
+interface Props {
+  open: boolean;
+  cabinetId: string;
+  entry: PasswordEntry | null;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+interface FormValues {
+  title: string;
+  username?: string;
+  password?: string;
+  url?: string;
+  notes?: string;
+}
+
+const MAX_TAGS = 20;
+const MAX_TAG_LEN = 50;
+
+const PasswordEntryModal: React.FC<Props> = ({ open, cabinetId, entry, onClose, onSaved }) => {
+  const [form] = Form.useForm<FormValues>();
+  const [loading, setLoading] = useState(false);
+  const isEdit = entry !== null;
+
+  // Tag state managed outside Ant Form
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInputVisible, setTagInputVisible] = useState(false);
+  const [tagInputValue, setTagInputValue] = useState('');
+  const tagInputRef = useRef<ReturnType<typeof Input> | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      if (entry) {
+        form.setFieldsValue({
+          title: entry.title,
+          username: entry.username ?? undefined,
+          url: entry.url ?? undefined,
+        });
+        setTags(entry.tags ?? []);
+      } else {
+        form.resetFields();
+        setTags([]);
+      }
+      setTagInputVisible(false);
+      setTagInputValue('');
+    }
+  }, [open, entry, form]);
+
+  useEffect(() => {
+    if (tagInputVisible) {
+      // Focus the input after it renders
+      setTimeout(() => (tagInputRef.current as any)?.focus(), 50);
+    }
+  }, [tagInputVisible]);
+
+  const handleTagClose = (removed: string): void => {
+    setTags((prev) => prev.filter((t) => t !== removed));
+  };
+
+  const confirmTagInput = (): void => {
+    const val = tagInputValue.trim();
+    if (!val) {
+      setTagInputVisible(false);
+      setTagInputValue('');
+      return;
+    }
+    if (val.length > MAX_TAG_LEN) {
+      message.warning(`Tag must be at most ${MAX_TAG_LEN} characters`);
+      return;
+    }
+    if (tags.includes(val)) {
+      message.warning('Tag already added');
+      setTagInputValue('');
+      return;
+    }
+    if (tags.length >= MAX_TAGS) {
+      message.warning(`Maximum ${MAX_TAGS} tags allowed`);
+      return;
+    }
+    setTags((prev) => [...prev, val]);
+    setTagInputVisible(false);
+    setTagInputValue('');
+  };
+
+  const handleOk = async (): Promise<void> => {
+    let values: FormValues;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (isEdit) {
+        const update: PasswordEntryUpdate = {
+          title: values.title,
+          username: values.username,
+          url: values.url,
+          notes: values.notes,
+          tags,
+        };
+        if (values.password) update.password = values.password;
+        await passwordsApi.update(entry.id, update);
+        message.success('Entry updated');
+      } else {
+        const create: PasswordEntryCreate = {
+          cabinet_id: cabinetId,
+          title: values.title,
+          username: values.username,
+          password: values.password!,
+          url: values.url,
+          notes: values.notes,
+          tags,
+        };
+        await passwordsApi.create(create);
+        message.success('Entry created');
+      }
+      onSaved();
+      onClose();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      message.error(axiosErr.response?.data?.detail ?? 'Save failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title={isEdit ? 'Edit Entry' : 'Add Entry'}
+      onOk={handleOk}
+      onCancel={onClose}
+      confirmLoading={loading}
+      destroyOnClose
+      width={520}
+    >
+      <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form.Item
+          name="title"
+          label="Title"
+          rules={[{ required: true, message: 'Title is required' }]}
+        >
+          <Input placeholder="e.g. Production DB Root" maxLength={200} />
+        </Form.Item>
+
+        <Form.Item name="username" label="Username">
+          <Input placeholder="Optional username / account" maxLength={200} />
+        </Form.Item>
+
+        <Form.Item
+          name="password"
+          label="Password"
+          rules={isEdit ? [] : [{ required: true, message: 'Password is required' }]}
+        >
+          <Input.Password
+            placeholder={isEdit ? 'Leave blank to keep current password' : 'Enter password'}
+            maxLength={1000}
+          />
+        </Form.Item>
+
+        <Form.Item name="url" label="URL">
+          <Input placeholder="https://..." maxLength={2048} />
+        </Form.Item>
+
+        <Form.Item name="notes" label="Notes">
+          <Input.TextArea rows={3} placeholder="Additional notes" maxLength={5000} />
+        </Form.Item>
+
+        <Form.Item label="Tags">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {tags.map((tag) => (
+              <Tag
+                key={tag}
+                closable
+                onClose={() => handleTagClose(tag)}
+                style={{ userSelect: 'none' }}
+              >
+                {tag}
+              </Tag>
+            ))}
+
+            {tagInputVisible ? (
+              <Input
+                ref={tagInputRef as any}
+                size="small"
+                value={tagInputValue}
+                onChange={(e) => setTagInputValue(e.target.value)}
+                onBlur={confirmTagInput}
+                onPressEnter={confirmTagInput}
+                placeholder="New tag"
+                style={{ width: 100 }}
+                maxLength={MAX_TAG_LEN}
+              />
+            ) : (
+              tags.length < MAX_TAGS && (
+                <Tooltip title="Add tag">
+                  <Tag
+                    onClick={() => setTagInputVisible(true)}
+                    style={{
+                      cursor: 'pointer',
+                      borderStyle: 'dashed',
+                      background: 'transparent',
+                    }}
+                  >
+                    <PlusOutlined /> New Tag
+                  </Tag>
+                </Tooltip>
+              )
+            )}
+          </div>
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+};
+
+export default PasswordEntryModal;

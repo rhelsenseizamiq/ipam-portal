@@ -21,6 +21,9 @@ class User(BaseModel):
     role: Role
     is_active: bool = True
     auth_type: str = "local"  # "local" or "ldap"
+    approval_status: str = "approved"  # "pending" | "approved" | "rejected"
+    registration_note: Optional[str] = None  # user's self-written reason, max 500 chars
+    rejection_reason: Optional[str] = None  # admin note on rejection, max 500 chars
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str = "system"

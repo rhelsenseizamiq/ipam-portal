@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
-import { Menu } from 'antd';
+import React, { useMemo, useEffect, useState } from 'react';
+import { Menu, Badge } from 'antd';
 import type { MenuProps } from 'antd';
 import {
+  HomeOutlined,
   DashboardOutlined,
   GlobalOutlined,
   ApartmentOutlined,
@@ -11,9 +12,11 @@ import {
   ClusterOutlined,
   DatabaseOutlined,
   ApiOutlined,
+  UserAddOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { usersApi } from '../../api/users';
 
 type MenuItem = Required<MenuProps>['items'][number];
 
@@ -25,9 +28,18 @@ const Sidebar: React.FC<Props> = ({ collapsed }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { hasRole } = useAuth();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    if (!hasRole('Administrator')) return;
+    usersApi.pending({ page: 1, page_size: 1 })
+      .then((res) => setPendingCount(res.data.total))
+      .catch(() => { /* non-critical */ });
+  }, [hasRole]);
 
   const selectedKey = useMemo(() => {
     const path = location.pathname;
+    if (path === '/') return '/';
     if (path.startsWith('/ip-records')) return '/ip-records';
     if (path.startsWith('/subnets')) return '/subnets';
     if (path.startsWith('/vrfs')) return '/vrfs';
@@ -35,12 +47,18 @@ const Sidebar: React.FC<Props> = ({ collapsed }) => {
     if (path.startsWith('/network-scan')) return '/network-scan';
     if (path.startsWith('/integrations')) return '/integrations';
     if (path.startsWith('/users')) return '/users';
+    if (path.startsWith('/pending-approvals')) return '/pending-approvals';
     if (path.startsWith('/audit-log')) return '/audit-log';
     return '/dashboard';
   }, [location.pathname]);
 
   const menuItems = useMemo((): MenuItem[] => {
     const items: MenuItem[] = [
+      {
+        key: '/',
+        icon: <HomeOutlined />,
+        label: 'Home',
+      },
       {
         key: '/dashboard',
         icon: <DashboardOutlined />,
@@ -98,6 +116,16 @@ const Sidebar: React.FC<Props> = ({ collapsed }) => {
           label: 'Users',
         },
         {
+          key: '/pending-approvals',
+          icon: <UserAddOutlined />,
+          label: (
+            <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              Pending Approvals
+              {pendingCount > 0 && <Badge count={pendingCount} size="small" />}
+            </span>
+          ),
+        },
+        {
           key: '/audit-log',
           icon: <AuditOutlined />,
           label: 'Audit Log',
@@ -106,7 +134,7 @@ const Sidebar: React.FC<Props> = ({ collapsed }) => {
     }
 
     return items;
-  }, [hasRole]);
+  }, [hasRole, pendingCount]);
 
   return (
     <Menu

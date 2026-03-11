@@ -5,7 +5,7 @@ services:
   # ── MongoDB ─────────────────────────────────────────────────────────────────
   mongodb:
     image: mongo:7.0
-    container_name: ipam-mongodb
+    container_name: iop-mongodb
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
@@ -18,7 +18,7 @@ services:
       - mongodb_config:/data/configdb
       - ./mongodb/init.js:/docker-entrypoint-initdb.d/01-init.js:ro
     networks:
-      - ipam-internal
+      - iop-internal
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 15s
@@ -31,15 +31,15 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ipam-api
+    container_name: iop-api
     restart: unless-stopped
     env_file: .env
     depends_on:
       mongodb:
         condition: service_healthy
     networks:
-      - ipam-internal
-      - ipam-external
+      - iop-internal
+      - iop-external
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
@@ -52,15 +52,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: ipam-frontend
+    container_name: iop-frontend
     restart: unless-stopped
     networks:
-      - ipam-internal
+      - iop-internal
 
   # ── Nginx Reverse Proxy (TLS termination) ────────────────────────────────────
   nginx:
     image: nginx:1.25-alpine
-    container_name: ipam-nginx
+    container_name: iop-nginx
     restart: unless-stopped
     ports:
       - "80:80"
@@ -76,8 +76,8 @@ services:
       frontend:
         condition: service_started
     networks:
-      - ipam-internal
-      - ipam-external
+      - iop-internal
+      - iop-external
 
 volumes:
   mongodb_data:
@@ -86,8 +86,8 @@ volumes:
     driver: local
 
 networks:
-  ipam-internal:
+  iop-internal:
     internal: true
     driver: bridge
-  ipam-external:
+  iop-external:
     driver: bridge

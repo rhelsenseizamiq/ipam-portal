@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     RATE_LIMIT_LOGIN: str = "5/minute"
     RATE_LIMIT_API: str = "200/minute"
 
+    # Password Vault
+    VAULT_MASTER_KEY: str = ""
+
     # LDAP / Active Directory (optional)
     LDAP_ENABLED: bool = False
     LDAP_SERVER: str = "ldap://ldap.example.com"
@@ -30,6 +33,23 @@ class Settings(BaseSettings):
     LDAP_BASE_DN: str = "dc=example,dc=com"
     LDAP_USER_FILTER: str = "(sAMAccountName={username})"
     LDAP_DEFAULT_ROLE: str = "Viewer"
+
+    @field_validator("VAULT_MASTER_KEY")
+    @classmethod
+    def validate_vault_master_key(cls, v: str) -> str:
+        if not v:
+            return v  # Vault is optional; validated at request time if vault routes are used
+        import base64
+        try:
+            decoded = base64.b64decode(v)
+        except Exception as exc:
+            raise ValueError("VAULT_MASTER_KEY must be a valid base64-encoded string") from exc
+        if len(decoded) < 32:
+            raise ValueError(
+                "VAULT_MASTER_KEY must decode to at least 32 bytes. "
+                "Generate with: openssl rand -base64 32"
+            )
+        return v
 
     @field_validator("JWT_SECRET_KEY")
     @classmethod
