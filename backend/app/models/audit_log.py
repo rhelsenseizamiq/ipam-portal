@@ -31,6 +31,7 @@ class ResourceType(str, Enum):
     IP_RANGE = "ip_range"
     CABINET = "cabinet"
     PASSWORD_ENTRY = "password_entry"
+    ASSET = "asset"
 
 
 class AuditLog(BaseModel):

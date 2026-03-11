@@ -19,6 +19,7 @@ import VaultPage from './pages/Vault/VaultPage';
 import VaultLayout from './components/layout/VaultLayout';
 import RegistrationPage from './pages/Registration/RegistrationPage';
 import PendingApprovalsPage from './pages/Users/PendingApprovalsPage';
+import AssetsPage from './pages/Assets/AssetsPage';
 
 const UnauthorizedPage: React.FC = () => (
   <div
@@ -175,6 +176,17 @@ const App: React.FC = () => (
               <ProtectedRoute requiredRole="Administrator">
                 <AppLayout>
                   <PendingApprovalsPage />
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/assets"
+            element={
+              <ProtectedRoute requiredRole="Viewer">
+                <AppLayout>
+                  <AssetsPage />
                 </AppLayout>
               </ProtectedRoute>
             }

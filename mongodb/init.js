@@ -112,6 +112,17 @@ db.password_entries.createIndex({ tags: 1 });
 
 print("✓ password_entries indexes created");
 
+// ── assets collection ─────────────────────────────────────────────────────────
+db.createCollection("assets");
+db.assets.createIndex({ name: 1 });
+db.assets.createIndex({ asset_type: 1 });
+db.assets.createIndex({ status: 1 });
+db.assets.createIndex({ ip_record_id: 1 });
+db.assets.createIndex({ data_center: 1 });
+db.assets.createIndex({ name: "text", hostname: "text", serial_number: "text" });
+
+print("✓ assets indexes created");
+
 print("─────────────────────────────────────────");
 print("MongoDB initialization complete.");
 print("─────────────────────────────────────────");

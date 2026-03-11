@@ -13,6 +13,7 @@ import {
   DatabaseOutlined,
   ApiOutlined,
   UserAddOutlined,
+  HddOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -44,6 +45,7 @@ const Sidebar: React.FC<Props> = ({ collapsed }) => {
     if (path.startsWith('/subnets')) return '/subnets';
     if (path.startsWith('/vrfs')) return '/vrfs';
     if (path.startsWith('/aggregates')) return '/aggregates';
+    if (path.startsWith('/assets')) return '/assets';
     if (path.startsWith('/network-scan')) return '/network-scan';
     if (path.startsWith('/integrations')) return '/integrations';
     if (path.startsWith('/users')) return '/users';
@@ -88,6 +90,11 @@ const Sidebar: React.FC<Props> = ({ collapsed }) => {
             key: '/aggregates',
             icon: <DatabaseOutlined />,
             label: 'Aggregates',
+          },
+          {
+            key: '/assets',
+            icon: <HddOutlined />,
+            label: 'Assets',
           },
         ],
       },
